@@ -11,7 +11,7 @@
             "program": "${workspaceFolder}/tests/test_basic.py",
             "env": {
                 "PYTHONMALLOC": "malloc",
-                "PYTHONPATH": "${workspaceFolder}/.ten/app:${workspaceFolder}/.ten/app/ten_packages/system/ten_runtime_python/lib:${workspaceFolder}/.ten/app/ten_packages/system/ten_runtime_python/interface"
+                "PYTHONPATH": "${workspaceFolder}/.ten/app/ten_packages/system/ten_ai_base/interface:${workspaceFolder}/.ten/app:${workspaceFolder}/.ten/app/ten_packages/system/ten_runtime_python/lib:${workspaceFolder}/.ten/app/ten_packages/system/ten_runtime_python/interface"
             }
         }
     ]

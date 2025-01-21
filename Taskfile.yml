@@ -10,12 +10,12 @@ tasks:
   test:
     desc: run tests
     cmds:
-      #TODO: - ./tests/bin/start {{ .CLI_ARGS }}
+      - ./tests/bin/start {{ .CLI_ARGS }}
 
   install:
     desc: install dependencies
     cmds:
-      #TODO: - tman install --standalone
+      - tman install --standalone
       - pip install -r requirements.txt
       - pip install -r tests/requirements.txt
 

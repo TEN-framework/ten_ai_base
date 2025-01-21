@@ -1,7 +1,7 @@
 {
   "type": "system",
   "name": "ten_ai_base",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "package": {
     "include": [
       "manifest.json",
@@ -13,7 +13,7 @@
     {
       "type": "system",
       "name": "ten_runtime_python",
-      "version": "0.6"
+      "version": "0.8"
     }
   ],
   "api": {}

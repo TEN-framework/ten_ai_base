@@ -21,6 +21,7 @@ def get_property_bool(ten_env: AsyncTenEnv, property_name: str) -> bool:
         ten_env.log_warn(f"GetProperty {property_name} failed: {err}")
         return False
 
+
 def get_properties_bool(ten_env: AsyncTenEnv, property_names: list[str], callback: Callable[[str, bool], None]) -> None:
     """Helper to get boolean properties from ten_env with error handling."""
     for property_name in property_names:
@@ -41,6 +42,7 @@ def get_properties_string(ten_env: AsyncTenEnv, property_names: list[str], callb
     for property_name in property_names:
         callback(property_name, get_property_string(ten_env, property_name))
 
+
 def get_property_int(ten_env: AsyncTenEnv, property_name: str) -> int:
     """Helper to get int property from ten_env with error handling."""
     try:
@@ -48,12 +50,14 @@ def get_property_int(ten_env: AsyncTenEnv, property_name: str) -> int:
     except Exception as err:
         ten_env.log_warn(f"GetProperty {property_name} failed: {err}")
         return 0
-    
+
+
 def get_properties_int(ten_env: AsyncTenEnv, property_names: list[str], callback: Callable[[str, int], None]) -> None:
     """Helper to get int properties from ten_env with error handling."""
     for property_name in property_names:
         callback(property_name, get_property_int(ten_env, property_name))
-    
+
+
 def get_property_float(ten_env: AsyncTenEnv, property_name: str) -> float:
     """Helper to get float property from ten_env with error handling."""
     try:
@@ -62,10 +66,12 @@ def get_property_float(ten_env: AsyncTenEnv, property_name: str) -> float:
         ten_env.log_warn(f"GetProperty {property_name} failed: {err}")
         return 0.0
 
+
 def get_properties_float(ten_env: AsyncTenEnv, property_names: list[str], callback: Callable[[str, float], None]) -> None:
     """Helper to get float properties from ten_env with error handling."""
     for property_name in property_names:
         callback(property_name, get_property_float(ten_env, property_name))
+
 
 class AsyncEventEmitter:
     def __init__(self):
@@ -96,7 +102,7 @@ class AsyncQueue:
                 self._queue.appendleft(item)  # Prepend item to the front
             else:
                 self._queue.append(item)  # Append item to the back
-            self._condition.notify() 
+            self._condition.notify()
 
     async def get(self):
         """Remove and return an item from the queue."""
@@ -116,6 +122,7 @@ class AsyncQueue:
         """Return the current size of the queue."""
         return len(self._queue)
 
+
 def write_pcm_to_file(buffer: bytearray, file_name: str) -> None:
     """Helper function to write PCM data to a file."""
     with open(file_name, "ab") as f:  # append to file
@@ -126,6 +133,7 @@ def generate_file_name(prefix: str) -> str:
     # Create a timestamp for the file name
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{prefix}_{timestamp}.pcm"
+
 
 class PCMWriter:
     def __init__(self, prefix: str, write_pcm: bool, buffer_size: int = 1024 * 64):
@@ -156,6 +164,7 @@ class PCMWriter:
         if self.file_name:
             await self.loop.run_in_executor(
                 None,
-                functools.partial(write_pcm_to_file, self.buffer[:], self.file_name),
+                functools.partial(write_pcm_to_file,
+                                  self.buffer[:], self.file_name),
             )
         self.buffer.clear()

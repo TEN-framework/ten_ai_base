@@ -1,0 +1,25 @@
+version: '3'
+
+tasks:
+  clean:
+    desc: clean up
+    cmds:
+      - rm -rf .ten .pytest_cache
+      - find . -type d -name __pycache__ -exec rm -rf {} \; || true
+
+  test:
+    desc: run tests
+    cmds:
+      - ./tests/bin/start {{ .CLI_ARGS }}
+
+  install:
+    desc: install dependencies
+    cmds:
+      - tman install --standalone
+      - pip install -r requirements.txt
+      - pip install -r tests/requirements.txt
+
+  lint:
+    desc: lint codes
+    cmds:
+      -  pylint ./interface/ten_ai_base/*.py

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  release:
+    types: [created]
+  push:
+    branches:
+      - "**"
+    paths-ignore:
+      - ".vscode/**"
+      - ".devcontainer/**"
+      - ".github/**"
+      - "!.github/workflows/ci.yml"
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - ".vscode/**"
+      - ".devcontainer/**"
+      - ".github/**"
+      - "!.github/workflows/ci.yml"
+      - "**.md"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ten-framework/ten_agent_build:0.4.2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: "0"
+          submodules: "true"
+
+      - name: Check ten dependencies
+        run: |
+          task install
+
+      - name: Run tests
+        run: |
+          task test -- -s -v
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # replace version by tag
+          jq '.version = "${{ github.ref_name }}"' manifest.json >manifest.gen.json
+
+          # check after replace 
+          diff manifest.gen.json manifest.json || true
+          mv manifest.gen.json manifest.json
+          jq . manifest.json
+
+          # publish to store
+          tman --verbose --user-token ${{ secrets.TEN_CLOUD_STORE }} publish

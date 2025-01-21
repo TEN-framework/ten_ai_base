@@ -11,6 +11,7 @@ from typing import Dict, List
 EVENT_MEMORY_EXPIRED = "memory_expired"
 EVENT_MEMORY_APPENDED = "memory_appended"
 
+
 class ChatMemory:
     def __init__(self, max_history_length):
         self.max_history_length = max_history_length

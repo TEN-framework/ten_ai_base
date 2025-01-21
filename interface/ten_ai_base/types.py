@@ -59,14 +59,13 @@ class LLMChatCompletionContentPartTextParam(TypedDict, total=False):
 
 
 LLMChatCompletionContentPartParam: TypeAlias = Union[
-    LLMChatCompletionContentPartTextParam,
-    LLMChatCompletionContentPartImageParam,
-    LLMChatCompletionContentPartInputAudioParam,
+    LLMChatCompletionContentPartTextParam, LLMChatCompletionContentPartImageParam, LLMChatCompletionContentPartInputAudioParam
 ]
 
 
 class LLMChatCompletionToolMessageParam(TypedDict, total=False):
-    content: Required[Union[str, Iterable[LLMChatCompletionContentPartTextParam]]]
+    content: Required[Union[str,
+                            Iterable[LLMChatCompletionContentPartTextParam]]]
     """The contents of the tool message."""
 
     role: Required[Literal["tool"]]
@@ -95,18 +94,22 @@ LLMChatCompletionMessageParam: TypeAlias = Union[
     LLMChatCompletionUserMessageParam, LLMChatCompletionToolMessageParam
 ]
 
+
 class LLMToolResultRequery(TypedDict, total=False):
     type: Required[Literal["requery"]]
     content: Required[Union[str, Iterable[LLMChatCompletionContentPartParam]]]
+
 
 class LLMToolResultLLMResult(TypedDict, total=False):
     type: Required[Literal["llmresult"]]
     content: Required[Union[str, Iterable[LLMChatCompletionContentPartParam]]]
 
+
 LLMToolResult: TypeAlias = Union[
     LLMToolResultRequery,
     LLMToolResultLLMResult,
 ]
+
 
 class LLMCallCompletionArgs(TypedDict, total=False):
     messages: Iterable[LLMChatCompletionMessageParam]
@@ -114,7 +117,7 @@ class LLMCallCompletionArgs(TypedDict, total=False):
 
 class LLMDataCompletionArgs(TypedDict, total=False):
     messages: Iterable[LLMChatCompletionMessageParam]
-    no_tool: bool
+    no_tool: bool = False
 
 
 class TTSPcmOptions(TypedDict, total=False):

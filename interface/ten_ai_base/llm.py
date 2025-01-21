@@ -57,7 +57,8 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
 
         if self.loop_task is None:
             self.loop = asyncio.get_event_loop()
-            self.loop_task = self.loop.create_task(self._process_queue(async_ten_env))
+            self.loop_task = self.loop.create_task(
+                self._process_queue(async_ten_env))
 
     async def on_stop(self, async_ten_env: AsyncTenEnv) -> None:
         await super().on_stop(async_ten_env)
@@ -75,15 +76,18 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
         async_ten_env.log_debug(f"on_cmd name {cmd_name}")
         if cmd_name == CMD_TOOL_REGISTER:
             try:
-                tool_metadata_json = cmd.get_property_to_json(CMD_PROPERTY_TOOL)
+                tool_metadata_json = cmd.get_property_to_json(
+                    CMD_PROPERTY_TOOL)
                 async_ten_env.log_info(f"register tool: {tool_metadata_json}")
-                tool_metadata = LLMToolMetadata.model_validate_json(tool_metadata_json)
+                tool_metadata = LLMToolMetadata.model_validate_json(
+                    tool_metadata_json)
                 async with self.available_tools_lock:
                     self.available_tools.append(tool_metadata)
                 await self.on_tools_update(async_ten_env, tool_metadata)
                 await async_ten_env.return_result(CmdResult.create(StatusCode.OK), cmd)
             except Exception:
-                async_ten_env.log_warn(f"on_cmd failed: {traceback.format_exc()}")
+                async_ten_env.log_warn(
+                    f"on_cmd failed: {traceback.format_exc()}")
                 await async_ten_env.return_result(
                     CmdResult.create(StatusCode.ERROR), cmd
                 )
@@ -130,7 +134,8 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
                 f"{'end of segment ' if end_of_segment else ''}sent sentence [{sentence}]"
             )
         except Exception as err:
-            async_ten_env.log_warn(f"send sentence [{sentence}] failed, err: {err}")
+            async_ten_env.log_warn(
+                f"send sentence [{sentence}] failed, err: {err}")
 
     @abstractmethod
     async def on_call_chat_completion(
@@ -167,4 +172,5 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
             except asyncio.CancelledError:
                 async_ten_env.log_info(f"Task cancelled: {args}")
             except Exception:
-                async_ten_env.log_error(f"Task failed: {args}, err: {traceback.format_exc()}")
+                async_ten_env.log_error(
+                    f"Task failed: {args}, err: {traceback.format_exc()}")

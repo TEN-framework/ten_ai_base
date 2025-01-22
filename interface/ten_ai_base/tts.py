@@ -77,12 +77,24 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
     async def on_data(self, async_ten_env: AsyncTenEnv, data: Data) -> None:
         # Get the necessary properties
         async_ten_env.log_info(f"on_data name: {data.get_name()}")
-        input_text = get_property_string(data, DATA_IN_PROPERTY_TEXT)
-
-        end_of_segment = get_property_bool(
-            data, DATA_IN_PROPERTY_END_OF_SEGMENT)
-
-        quiet = get_property_bool(DATA_IN_PROPERTY_QUIET)
+        
+        try:
+            input_text = data.get_property_string(DATA_IN_PROPERTY_TEXT)
+        except Exception as e:
+            input_text = ""
+            async_ten_env.log_warn(f"get_property_string input_text {e}")
+            
+        try:
+            end_of_segment = data.get_property_bool(DATA_IN_PROPERTY_END_OF_SEGMENT)
+        except Exception as e:
+            end_of_segment = False
+            async_ten_env.log_warn(f"get_property_bool end_of_segment {e}")
+            
+        try:
+            quiet = data.get_property_bool(DATA_IN_PROPERTY_QUIET)  
+        except Exception as e:
+            quiet = False  
+            async_ten_env.log_warn(f"get_property_bool quiet {e}")
 
         async_ten_env.log_debug(
             f"on_data input_text:{input_text} end_of_segment:{end_of_segment} quiet:{quiet}")

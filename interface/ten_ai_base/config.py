@@ -27,6 +27,15 @@ class BaseConfig:
         c = cls()
         await c._init_async(ten_env)
         return c
+    
+    def update(obj, config: dict):
+        for field in fields(obj):
+            try:
+                val = config.get(field.name)
+                if val:
+                    setattr(obj, field.name, val)
+            except Exception as e:
+                pass
 
     def _init(obj, ten_env: TenEnv):
         """

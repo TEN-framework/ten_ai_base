@@ -9,7 +9,7 @@ from .usage import LLMUsage, LLMCompletionTokensDetails, LLMPromptTokensDetails
 from .llm import AsyncLLMBaseExtension
 from .llm_tool import AsyncLLMToolBaseExtension
 from .chat_memory import ChatMemory, EVENT_MEMORY_APPENDED, EVENT_MEMORY_EXPIRED
-from .helper import AsyncQueue, AsyncEventEmitter
+from .helper import AsyncQueue, AsyncEventEmitter, TimeHelper
 from .config import BaseConfig
 
 # Specify what should be imported when a user imports * from the
@@ -31,4 +31,5 @@ __all__ = [
     "LLMPromptTokensDetails",
     "EVENT_MEMORY_APPENDED",
     "EVENT_MEMORY_EXPIRED",
+    "TimeHelper"
 ]

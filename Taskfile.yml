@@ -4,13 +4,10 @@ tasks:
   clean:
     desc: clean up
     cmds:
-      - rm -rf .ten .pytest_cache
+      - find . -type d -name .pytest_cache -exec rm -rf {} \; || true
       - find . -type d -name __pycache__ -exec rm -rf {} \; || true
-
-  test:
-    desc: run tests
-    cmds:
-      - ./tests/bin/start {{ .CLI_ARGS }}
+      - find . -type d -name .ten -exec rm -rf {} \; || true
+      - find . -name .coverage -exec rm -f {} \; || true
 
   install:
     desc: install dependencies
@@ -23,3 +20,34 @@ tasks:
     desc: lint codes
     cmds:
       -  pylint ./interface/ten_ai_base/*.py
+
+  test:
+    desc: run tests
+    cmds:
+      - task: test-standalone
+      - task: test-integration
+
+  test-standalone:
+    desc: run standalone tests
+    cmds: 
+      - ./tests/bin/start {{ .CLI_ARGS }}
+
+  test-integration:
+    desc: run integration tests
+    vars:
+      EXTENSIONS:
+        sh: 'find integration_tests -type d -exec test -d "{}/tests" \; -print'
+    cmds:
+      - for: { var: EXTENSIONS }
+        task: test-extension
+        vars:
+          EXTENSION: '{{ .ITEM }}'
+
+  test-extension:
+    desc: run standalone testing of one single extension
+    vars:
+      EXTENSION: '{{.EXTENSION| default "test_config_python"}}'
+    env:
+      PYTHONPATH: "{{.USER_WORKING_DIR}}/interface:{{.USER_WORKING_DIR}}"
+    cmds:
+      - cd {{.EXTENSION}} && tman -y install --standalone && ./tests/bin/start {{ .CLI_ARGS }}

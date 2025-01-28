@@ -18,8 +18,10 @@ tasks:
 
   lint:
     desc: lint codes
+    env:
+      PYTHONPATH: "{{.USER_WORKING_DIR}}/.ten/app:{{.USER_WORKING_DIR}}/.ten/app/ten_packages/system/ten_runtime_python/lib:{{.USER_WORKING_DIR}}/.ten/app/ten_packages/system/ten_runtime_python/interface"
     cmds:
-      -  pylint ./interface/ten_ai_base/*.py
+      -  pylint ./interface/ten_ai_base/*.py {{ .CLI_ARGS }}
 
   test:
     desc: run tests

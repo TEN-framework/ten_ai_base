@@ -28,20 +28,20 @@ class BaseConfig:
         await c._init_async(ten_env)
         return c
     
-    def update(obj, config: dict):
-        for field in fields(obj):
+    def update(self, config: dict):
+        for field in fields(self):
             try:
                 val = config.get(field.name)
                 if val:
-                    setattr(obj, field.name, val)
+                    setattr(self, field.name, val)
             except Exception as e:
                 pass
 
-    def _init(obj, ten_env: TenEnv):
+    def _init(self, ten_env: TenEnv):
         """
         Get property from ten_env to initialize the dataclass config.    
         """
-        for field in fields(obj):
+        for field in fields(self):
             # TODO: 'is_property_exist' has a bug that can not be used in async extension currently, use it instead of try .. except once fixed
             # if not ten_env.is_property_exist(field.name):
             #     continue
@@ -50,44 +50,44 @@ class BaseConfig:
                     case builtins.str:
                         val = ten_env.get_property_string(field.name)
                         if val:
-                            setattr(obj, field.name, val)
+                            setattr(self, field.name, val)
                     case builtins.int:
                         val = ten_env.get_property_int(field.name)
-                        setattr(obj, field.name, val)
+                        setattr(self, field.name, val)
                     case builtins.bool:
                         val = ten_env.get_property_bool(field.name)
-                        setattr(obj, field.name, val)
+                        setattr(self, field.name, val)
                     case builtins.float:
                         val = ten_env.get_property_float(field.name)
-                        setattr(obj, field.name, val)
+                        setattr(self, field.name, val)
                     case _:
                         val = ten_env.get_property_to_json(field.name)
-                        setattr(obj, field.name, json.loads(val))
+                        setattr(self, field.name, json.loads(val))
             except Exception as e:
                 pass
 
-    async def _init_async(obj, ten_env: AsyncTenEnv):
+    async def _init_async(self, ten_env: AsyncTenEnv):
         """
         Get property from ten_env to initialize the dataclass config.    
         """
-        for field in fields(obj):
+        for field in fields(self):
             try:
                 match field.type:
                     case builtins.str:
                         val = await ten_env.get_property_string(field.name)
                         if val:
-                            setattr(obj, field.name, val)
+                            setattr(self, field.name, val)
                     case builtins.int:
                         val = await ten_env.get_property_int(field.name)
-                        setattr(obj, field.name, val)
+                        setattr(self, field.name, val)
                     case builtins.bool:
                         val = await ten_env.get_property_bool(field.name)
-                        setattr(obj, field.name, val)
+                        setattr(self, field.name, val)
                     case builtins.float:
                         val = await ten_env.get_property_float(field.name)
-                        setattr(obj, field.name, val)
+                        setattr(self, field.name, val)
                     case _:
                         val = await ten_env.get_property_to_json(field.name)
-                        setattr(obj, field.name, json.loads(val))
+                        setattr(self, field.name, json.loads(val))
             except Exception as e:
                 pass

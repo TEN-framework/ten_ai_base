@@ -39,6 +39,10 @@ jobs:
         run: |
           task test -- -s -v
 
+      - name: Run lint
+        run: |
+          task lint -- --errors-only
+
       - name: Release
         if: startsWith(github.ref, 'refs/tags/')
         run: |

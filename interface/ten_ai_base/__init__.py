@@ -8,6 +8,7 @@ from .types import LLMCallCompletionArgs, LLMDataCompletionArgs, LLMToolMetadata
 from .usage import LLMUsage, LLMCompletionTokensDetails, LLMPromptTokensDetails
 from .llm import AsyncLLMBaseExtension
 from .llm_tool import AsyncLLMToolBaseExtension
+from .tts import AsyncTTSBaseExtension
 from .chat_memory import ChatMemory, EVENT_MEMORY_APPENDED, EVENT_MEMORY_EXPIRED
 from .helper import AsyncQueue, AsyncEventEmitter, TimeHelper
 from .config import BaseConfig
@@ -21,6 +22,7 @@ __all__ = [
     "LLMDataCompletionArgs",
     "AsyncLLMBaseExtension",
     "AsyncLLMToolBaseExtension",
+    "AsyncTTSBaseExtension",
     "ChatMemory",
     "AsyncQueue",
     "AsyncEventEmitter",

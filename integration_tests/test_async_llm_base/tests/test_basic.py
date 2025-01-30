@@ -13,7 +13,7 @@ import json
 import math
 
 
-class ExtensionTesterBasicTypesTestConfig(AsyncExtensionTester):
+class ExtensionTesterBasic(AsyncExtensionTester):
     async def on_start(self, ten_env_tester: AsyncTenEnvTester) -> None:
 
         # make sure any cmd will be returned properly
@@ -25,6 +25,6 @@ class ExtensionTesterBasicTypesTestConfig(AsyncExtensionTester):
 
 
 def test_basic():
-    tester = ExtensionTesterBasicTypesTestConfig()
+    tester = ExtensionTesterBasic()
     tester.set_test_mode_single("test_async_llm_base")
     tester.run()

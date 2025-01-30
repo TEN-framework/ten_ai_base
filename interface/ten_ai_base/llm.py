@@ -165,6 +165,7 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
         while True:
             # Wait for an item to be available in the queue
             args = await self.queue.get()
+            args = {} if args is None else args
             try:
                 async_ten_env.log_info(f"Processing queue item: {args}")
                 self.current_task = asyncio.create_task(

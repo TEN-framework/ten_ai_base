@@ -103,6 +103,8 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
                 await async_ten_env.return_result(
                     CmdResult.create(StatusCode.ERROR), cmd
                 )
+        else:
+            await async_ten_env.return_result(CmdResult.create(StatusCode.OK), cmd)
 
     async def queue_input_item(
         self, prepend: bool = False, **kargs: LLMDataCompletionArgs

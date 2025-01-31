@@ -13,7 +13,7 @@ import json
 import math
 
 
-class ExtensionTesterBasic(AsyncExtensionTester):
+class ExtensionTesterCmdReturn(AsyncExtensionTester):
     async def on_start(self, ten_env_tester: AsyncTenEnvTester) -> None:
 
         # make sure any cmd will be returned properly
@@ -24,7 +24,7 @@ class ExtensionTesterBasic(AsyncExtensionTester):
         ten_env_tester.stop_test()
 
 
-def test_basic():
-    tester = ExtensionTesterBasic()
+def test_cmd_return():
+    tester = ExtensionTesterCmdReturn()
     tester.set_test_mode_single("test_async_tts_base")
     tester.run()

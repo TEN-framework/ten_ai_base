@@ -4,19 +4,20 @@
 # See the LICENSE file for more information.
 #
 from ten import (
-    TenEnv,
     AsyncTenEnv,
 )
 from ten_ai_base import (
     AsyncTTSBaseExtension, BaseConfig
 )
 from dataclasses import dataclass
+import asyncio
 
 
 @dataclass
 class TestAsyncTTSConfig(BaseConfig):
+    sample_rate: int = 16000
+
     # TODO: add extra config fields here
-    pass
 
 
 class TestAsyncTTSExtension(AsyncTTSBaseExtension):
@@ -37,7 +38,15 @@ class TestAsyncTTSExtension(AsyncTTSBaseExtension):
         ten_env.log_debug("TODO: on_stop")
 
     async def on_request_tts(self, ten_env: AsyncTenEnv, input_text: str, end_of_segment: bool) -> None:
-        ten_env.log_debug("on_request_tts")
+        ten_env.log_debug(f"on_request_tts, text [{input_text}]")
+
+        # mock text-to-speech
+        audio_data_bytes = [3, 100, 7]
+        for b in audio_data_bytes:
+            audio_data = bytearray(b)
+            await self.send_audio_out(
+                ten_env=ten_env, audio_data=audio_data, sample_rate=self.config.sample_rate)
+            await asyncio.sleep(0.1)
 
     async def on_cancel_tts(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_debug("on_cancel_tts")

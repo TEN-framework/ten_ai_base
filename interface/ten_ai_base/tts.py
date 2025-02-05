@@ -4,8 +4,11 @@
 # See the LICENSE file for more information.
 #
 from abc import ABC, abstractmethod
+from pydantic import BaseModel
 import asyncio
 import traceback
+import json
+import time
 
 from ten import (
     AsyncExtension,
@@ -17,8 +20,27 @@ from ten.cmd import Cmd
 from ten.cmd_result import CmdResult, StatusCode
 from ten_ai_base.const import CMD_IN_FLUSH, CMD_OUT_FLUSH, DATA_IN_PROPERTY_END_OF_SEGMENT, DATA_IN_PROPERTY_TEXT, DATA_IN_PROPERTY_QUIET
 from ten_ai_base.types import TTSPcmOptions
-from .helper import AsyncQueue, get_property_bool, get_property_string
+from ten_ai_base.helper import AsyncQueue
 
+DATA_TRANSCRIPT = "text_data"
+
+class Word(BaseModel):
+    word: str
+    start_ms: int
+
+class Transcription(BaseModel):
+    text: str
+    stream_id: int = 0
+    user_id: str = ""
+    end_of_segment: bool = False
+    is_final: bool = True   # optional, 仅 asr 会需要，tts 不需要填
+    quiet: bool = False
+
+    turn_id: int = 0
+    start_ms: int = int(time.time() * 1000)
+    language: str = ""      # optional, tts 有明确信息可以填
+    
+    words: list[Word] | None = None
 
 class AsyncTTSBaseExtension(AsyncExtension, ABC):
     """
@@ -78,37 +100,22 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
         # Get the necessary properties
         async_ten_env.log_info(f"on_data name: {data.get_name()}")
         
-        try:
-            input_text = data.get_property_string(DATA_IN_PROPERTY_TEXT)
-        except Exception as e:
-            input_text = ""
-            async_ten_env.log_warn(f"get_property_string input_text {e}")
-            
-        try:
-            end_of_segment = data.get_property_bool(DATA_IN_PROPERTY_END_OF_SEGMENT)
-        except Exception as e:
-            end_of_segment = False
-            async_ten_env.log_warn(f"get_property_bool end_of_segment {e}")
-            
-        try:
-            quiet = data.get_property_bool(DATA_IN_PROPERTY_QUIET)  
-        except Exception as e:
-            quiet = False  
-            async_ten_env.log_warn(f"get_property_bool quiet {e}")
+        if data.get_name() == DATA_TRANSCRIPT:
+            t = Transcription(**json.loads(data.get_property_to_json("")))
 
-        async_ten_env.log_debug(
-            f"on_data input_text:{input_text} end_of_segment:{end_of_segment} quiet:{quiet}")
+            async_ten_env.log_debug(
+                f"on_data input_text:{t.text} end_of_segment:{t.end_of_segment} quiet:{t.quiet} turn_id:{t.turn_id}")
 
-        if quiet:
-            async_ten_env.log_info("ignore quiet text")
-            return
+            if t.quiet:
+                async_ten_env.log_info("ignore quiet text")
+                return
 
-        if not input_text:
-            async_ten_env.log_warn("ignore empty text")
-            return
+            if not t.text:
+                async_ten_env.log_warn("ignore empty text")
+                return
 
-        # Start an asynchronous task for handling tts
-        await self.queue.put([input_text, end_of_segment])
+            # Start an asynchronous task for handling tts
+            await self.queue.put(t)
 
     async def flush_input_items(self, ten_env: AsyncTenEnv):
         """Flushes the self.queue and cancels the current task."""
@@ -155,9 +162,14 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
         except Exception as e:
             ten_env.log_error(
                 f"error send audio frame, {traceback.format_exc()}")
+            
+    async def send_transcript_out(self, ten_env: AsyncTenEnv, t: Transcription) -> None:
+        data = Data.create(DATA_TRANSCRIPT)
+        data.set_property_from_json("", t.model_dump_json())
+        await ten_env.send_data(data)
 
     @abstractmethod
-    async def on_request_tts(self, ten_env: AsyncTenEnv, input_text: str, end_of_segment: bool) -> None:
+    async def on_request_tts(self, ten_env: AsyncTenEnv, t: Transcription) -> None:
         """
         Called when a new input item is available in the queue. Override this method to implement the TTS request logic.
         Use send_audio_out to send the audio data to the output when the audio data is ready.
@@ -173,15 +185,16 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
         """Asynchronously process queue items one by one."""
         while True:
             # Wait for an item to be available in the queue
-            [text, end_of_segment] = await self.queue.get()
+            t: Transcription = await self.queue.get()
+            if t is None:
+                break
 
             try:
-                self.current_task = asyncio.create_task(
-                    self.on_request_tts(ten_env, text, end_of_segment))
+                self.current_task = asyncio.create_task(self.on_request_tts(ten_env, t))
                 await self.current_task  # Wait for the current task to finish or be cancelled
                 self.current_task = None
             except asyncio.CancelledError:
-                ten_env.log_info(f"Task cancelled: {text}")
+                ten_env.log_info(f"Task cancelled: {t.text}")
             except Exception as err:
                 ten_env.log_error(
-                    f"Task failed: {text}, err: {traceback.format_exc()}")
+                    f"Task failed: {t.text}, err: {traceback.format_exc()}")

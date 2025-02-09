@@ -7,9 +7,10 @@ from ten import (
     TenEnv,
     AsyncTenEnv,
 )
-from ten_ai_base import (
-    AsyncLLMToolBaseExtension, LLMToolMetadata, LLMToolResult, BaseConfig
+from ten_ai_base.llm_tool import (
+    AsyncLLMToolBaseExtension, LLMToolMetadata, LLMToolResult
 )
+from ten_ai_base.config import BaseConfig
 from dataclasses import dataclass
 
 

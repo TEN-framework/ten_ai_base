@@ -6,7 +6,7 @@
 #
 
 import time
-from ten_ai_base import TimeHelper
+from ten_ai_base.helper import TimeHelper
 import math
 
 

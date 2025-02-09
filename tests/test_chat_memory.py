@@ -5,7 +5,7 @@
 # Refer to the "LICENSE" file in the root directory for more information.
 #
 
-from ten_ai_base import ChatMemory, EVENT_MEMORY_APPENDED, EVENT_MEMORY_EXPIRED
+from ten_ai_base.chat_memory import ChatMemory, EVENT_MEMORY_APPENDED, EVENT_MEMORY_EXPIRED
 import pytest
 import asyncio
 

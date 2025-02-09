@@ -15,8 +15,8 @@ from ten.async_ten_env import AsyncTenEnv
 from ten.audio_frame import AudioFrame, AudioFrameDataFmt
 from ten.cmd import Cmd
 from ten.cmd_result import CmdResult, StatusCode
-from ten_ai_base.const import CMD_IN_FLUSH, CMD_OUT_FLUSH, DATA_IN_PROPERTY_END_OF_SEGMENT, DATA_IN_PROPERTY_TEXT, DATA_IN_PROPERTY_QUIET
-from ten_ai_base.types import TTSPcmOptions
+from .const import CMD_IN_FLUSH, CMD_OUT_FLUSH, DATA_IN_PROPERTY_END_OF_SEGMENT, DATA_IN_PROPERTY_TEXT, DATA_IN_PROPERTY_QUIET
+from .types import TTSPcmOptions
 from .helper import AsyncQueue, get_property_bool, get_property_string
 
 

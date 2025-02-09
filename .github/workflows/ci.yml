@@ -35,10 +35,6 @@ jobs:
         run: |
           task install
 
-      - name: Run tests
-        run: |
-          task test -- -s -v
-
       - name: Run lint
         run: |
           task lint -- --errors-only
@@ -56,3 +52,7 @@ jobs:
 
           # publish to store
           tman --verbose --user-token ${{ secrets.TEN_CLOUD_STORE }} publish
+
+      - name: Run tests
+        run: |
+          task test -- -s -v

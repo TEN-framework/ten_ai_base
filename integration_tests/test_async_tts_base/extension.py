@@ -6,9 +6,8 @@
 from ten import (
     AsyncTenEnv,
 )
-from ten_ai_base import (
-    AsyncTTSBaseExtension, BaseConfig
-)
+from ten_ai_base.config import BaseConfig
+from ten_ai_base.tts import AsyncTTSBaseExtension
 from dataclasses import dataclass
 import asyncio
 

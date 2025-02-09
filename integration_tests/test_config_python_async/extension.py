@@ -8,7 +8,7 @@ from ten import (
     AsyncTenEnv,
     Cmd,
 )
-from ten_ai_base import BaseConfig
+from ten_ai_base.config import BaseConfig
 from enum import Enum
 from dataclasses import dataclass, asdict
 import json

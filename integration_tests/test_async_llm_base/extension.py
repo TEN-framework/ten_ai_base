@@ -4,9 +4,9 @@
 # See the LICENSE file for more information.
 #
 from ten import AsyncTenEnv
-from ten_ai_base import (
-    AsyncLLMBaseExtension, LLMCallCompletionArgs, LLMDataCompletionArgs, LLMToolMetadata, BaseConfig
-)
+from ten_ai_base.config import BaseConfig
+from ten_ai_base.llm import AsyncLLMBaseExtension, LLMCallCompletionArgs, LLMDataCompletionArgs
+from ten_ai_base.llm_tool import LLMToolMetadata
 from dataclasses import dataclass
 
 

@@ -12,7 +12,7 @@ from .tts import AsyncTTSBaseExtension
 from .chat_memory import ChatMemory, AsyncChatMemory, EVENT_MEMORY_APPENDED, EVENT_MEMORY_EXPIRED
 from .helper import AsyncQueue, AsyncEventEmitter, TimeHelper
 from .config import BaseConfig
-from .transcription import UserTranscription, AssistantTranscription, Word
+from .transcription import UserTranscription, AssistantTranscription, Word, TurnStatus
 
 # Specify what should be imported when a user imports * from the
 # ten_ai_base package.
@@ -38,5 +38,6 @@ __all__ = [
     "TimeHelper",
     "UserTranscription",
     "AssistantTranscription",
-    "Word"
+    "Word",
+    "TurnStatus"
 ]

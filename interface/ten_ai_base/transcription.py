@@ -1,4 +1,11 @@
 from pydantic import BaseModel
+from enum import IntEnum
+
+
+class TurnStatus(IntEnum):
+    IN_PROGRESS = 0
+    END = 1             # End gracefully
+    INTERRUPTED = 2     # End by interrupt
 
 
 class Word(BaseModel):

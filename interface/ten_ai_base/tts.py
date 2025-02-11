@@ -107,10 +107,12 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
                 f"on_data input_text:{t.text} end_of_segment:{t.end_of_segment} quiet:{t.quiet} turn_id:{t.turn_id}")
 
             if t.quiet:
+                await async_ten_env.send_data(data)
                 async_ten_env.log_info("ignore quiet text")
                 return
 
             if not t.text:
+                await async_ten_env.send_data(data)
                 async_ten_env.log_warn("ignore empty text")
                 return
 

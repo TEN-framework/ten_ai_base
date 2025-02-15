@@ -98,10 +98,6 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
                 async_ten_env.log_debug("ignore quiet text")
                 return
 
-            if not t.text:
-                async_ten_env.log_debug("ignore empty text")
-                return
-
             # Start an asynchronous task for handling tts
             await self.queue.put(t)
 

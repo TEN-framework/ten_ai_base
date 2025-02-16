@@ -59,6 +59,8 @@ class ExtensionTesterFlush(AsyncExtensionTester):
 
 
 def test_flush():
+    # TODO: fix later
+
     tester = ExtensionTesterFlush(16000)
     tester.set_test_mode_single("test_async_tts_base")
     tester.run()

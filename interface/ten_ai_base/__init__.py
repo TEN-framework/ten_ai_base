@@ -13,6 +13,7 @@ from .chat_memory import ChatMemory, AsyncChatMemory, EVENT_MEMORY_APPENDED, EVE
 from .helper import AsyncQueue, AsyncEventEmitter, TimeHelper
 from .config import BaseConfig
 from .transcription import UserTranscription, AssistantTranscription, Word, TurnStatus
+from .message import ModuleType, ErrorMessage, MetricsMessage
 
 # Specify what should be imported when a user imports * from the
 # ten_ai_base package.
@@ -39,5 +40,8 @@ __all__ = [
     "UserTranscription",
     "AssistantTranscription",
     "Word",
-    "TurnStatus"
+    "TurnStatus",
+    "ModuleType",
+    "ErrorMessage",
+    "MetricsMessage"
 ]

@@ -9,7 +9,7 @@ class ErrorMessage(BaseModel):
     object: str = "message.error"
     module: str = ""
     message: str = ""
-    turn_id: int = ""
+    turn_id: int = 0
     code: int = 0
 
 class MetricsMessage(BaseModel):

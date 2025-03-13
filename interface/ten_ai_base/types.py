@@ -1,5 +1,6 @@
-from typing import Iterable, Optional, TypeAlias, Union
+from typing import Iterable, Optional, TypeAlias, Union, Dict, Any
 from pydantic import BaseModel
+from dataclasses import field
 from typing_extensions import Literal, Required, TypedDict
 
 
@@ -88,6 +89,8 @@ class LLMChatCompletionUserMessageParam(TypedDict, total=False):
     Provides the model information to differentiate between participants of the same
     role.
     """
+
+    metadata: Dict[str, Any]
 
 
 LLMChatCompletionMessageParam: TypeAlias = Union[

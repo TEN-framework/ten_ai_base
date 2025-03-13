@@ -77,12 +77,6 @@ class AsyncChatMemory:
             if history_count > 0 and history_count > self.max_history_length:
                 await self.emit(EVENT_MEMORY_EXPIRED, self.history.pop(0))
                 continue
-            if history_count > 0 and (self.history[0]["role"] == "assistant" or self.history[0]["role"] == "tool"):
-                # we cannot have an assistant message at the start of the chat history
-                # if after removal of the first, we have an assistant message,
-                # we need to remove the assistant message too
-                await self.emit(EVENT_MEMORY_EXPIRED, self.history.pop(0))
-                continue
             break
 
     async def get(self):

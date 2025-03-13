@@ -90,7 +90,7 @@ class LLMChatCompletionUserMessageParam(TypedDict, total=False):
     role.
     """
 
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any]
 
 
 LLMChatCompletionMessageParam: TypeAlias = Union[

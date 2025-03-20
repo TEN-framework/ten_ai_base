@@ -4,7 +4,7 @@
 # See the LICENSE file for more information.
 #
 
-from .types import LLMCallCompletionArgs, LLMDataCompletionArgs, LLMToolMetadata, LLMToolResult, LLMChatCompletionMessageParam
+from .types import LLMCallCompletionArgs, LLMDataCompletionArgs, LLMToolMetadata, LLMToolResult, LLMChatCompletionMessageParam, LLMToolResultLLMResult, LLMToolMetadataParameter
 from .usage import LLMUsage, LLMCompletionTokensDetails, LLMPromptTokensDetails
 from .llm import AsyncLLMBaseExtension
 from .llm_tool import AsyncLLMToolBaseExtension
@@ -20,6 +20,8 @@ from .message import ModuleType, ErrorMessage, MetricsMessage
 __all__ = [
     "LLMToolMetadata",
     "LLMToolResult",
+    "LLMToolResultLLMResult",
+    "LLMToolMetadataParameter",
     "LLMCallCompletionArgs",
     "LLMDataCompletionArgs",
     "AsyncLLMBaseExtension",

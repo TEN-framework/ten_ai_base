@@ -94,6 +94,11 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
                     f"invalid data {data_name} payload, err {e}")
                 return
 
+            if t.object != "assistant.transcription":
+                async_ten_env.log_warn(
+                    f"invalid data {data_name} payload, object {t.object}")
+                return
+            
             t.source = "tts"
             if t.quiet:
                 async_ten_env.log_debug("ignore quiet text")

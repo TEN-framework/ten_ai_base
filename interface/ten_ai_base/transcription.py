@@ -30,7 +30,7 @@ class UserTranscription(BaseModel):
     user_id: str = ""
 
     words: list[Word] | None = None
-
+    merged_turns: list[int] | None = None
 
 class AssistantTranscription(BaseModel):
     object: str = "assistant.transcription"  # [required] name of the object

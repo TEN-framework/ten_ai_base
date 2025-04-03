@@ -94,6 +94,7 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
                     f"invalid data {data_name} payload, err {e}")
                 return
 
+            t.source = "tts"
             if t.quiet:
                 async_ten_env.log_debug("ignore quiet text")
                 return

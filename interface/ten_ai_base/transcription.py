@@ -31,6 +31,7 @@ class UserTranscription(BaseModel):
 
     words: list[Word] | None = None
     merged_turns: list[int] | None = None
+    interruptable: bool = False  # whether the text can be interrupted
 
 class AssistantTranscription(BaseModel):
     object: str = "assistant.transcription"  # [required] name of the object
@@ -54,3 +55,4 @@ class AssistantTranscription(BaseModel):
     user_id: str = ""
 
     words: list[Word] | None = None
+    interruptable: bool = False  # whether the text can be interrupted

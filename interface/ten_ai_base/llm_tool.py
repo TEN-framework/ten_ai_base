@@ -55,24 +55,24 @@ class AsyncLLMToolBaseExtension(AsyncExtension, ABC):
 
                 if result is None:
                     await async_ten_env.return_result(
-                        CmdResult.create(StatusCode.OK), cmd
+                        CmdResult.create(StatusCode.OK, cmd)
                     )
                     return
 
-                cmd_result: CmdResult = CmdResult.create(StatusCode.OK)
+                cmd_result: CmdResult = CmdResult.create(StatusCode.OK, cmd)
                 cmd_result.set_property_from_json(
                     CMD_PROPERTY_RESULT, json.dumps(result)
                 )
-                await async_ten_env.return_result(cmd_result, cmd)
+                await async_ten_env.return_result(cmd_result)
                 async_ten_env.log_info(f"tool result done, {result}")
             except Exception:
                 async_ten_env.log_warn(
                     f"on_cmd failed: {traceback.format_exc()}")
                 await async_ten_env.return_result(
-                    CmdResult.create(StatusCode.ERROR), cmd
+                    CmdResult.create(StatusCode.ERROR, cmd)
                 )
         else:
-            await async_ten_env.return_result(CmdResult.create(StatusCode.OK), cmd)
+            await async_ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
 
     async def on_data(self, async_ten_env: AsyncTenEnv, data: Data) -> None:
         data_name = data.get_name()

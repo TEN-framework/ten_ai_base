@@ -84,27 +84,27 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
                 async with self.available_tools_lock:
                     self.available_tools.append(tool_metadata)
                 await self.on_tools_update(async_ten_env, tool_metadata)
-                await async_ten_env.return_result(CmdResult.create(StatusCode.OK), cmd)
+                await async_ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
             except Exception:
                 async_ten_env.log_warn(
                     f"on_cmd failed: {traceback.format_exc()}")
                 await async_ten_env.return_result(
-                    CmdResult.create(StatusCode.ERROR), cmd
+                    CmdResult.create(StatusCode.ERROR, cmd)
                 )
         elif cmd_name == CMD_CHAT_COMPLETION_CALL:
             try:
                 args = json.loads(cmd.get_property_to_json("arguments"))
                 response = await self.on_call_chat_completion(async_ten_env, **args)
-                cmd_result = CmdResult.create(StatusCode.OK)
+                cmd_result = CmdResult.create(StatusCode.OK, cmd)
                 cmd_result.set_property_from_json("response", response)
-                await async_ten_env.return_result(cmd_result, cmd)
+                await async_ten_env.return_result(cmd_result)
             except Exception as err:
                 async_ten_env.log_warn(f"on_cmd failed: {err}")
                 await async_ten_env.return_result(
-                    CmdResult.create(StatusCode.ERROR), cmd
+                    CmdResult.create(StatusCode.ERROR, cmd)
                 )
         else:
-            await async_ten_env.return_result(CmdResult.create(StatusCode.OK), cmd)
+            await async_ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
 
     async def queue_input_item(
         self, prepend: bool = False, **kargs: LLMDataCompletionArgs

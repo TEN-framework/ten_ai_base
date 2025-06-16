@@ -70,14 +70,14 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
             await async_ten_env.send_cmd(Cmd.create(CMD_OUT_FLUSH))
             async_ten_env.log_debug("on_cmd sent flush")
             status_code, detail = StatusCode.OK, "success"
-            cmd_result = CmdResult.create(status_code)
+            cmd_result = CmdResult.create(status_code, cmd)
             cmd_result.set_property_string("detail", detail)
-            await async_ten_env.return_result(cmd_result, cmd)
+            await async_ten_env.return_result(cmd_result)
         else:
             status_code, detail = StatusCode.OK, "success"
-            cmd_result = CmdResult.create(status_code)
+            cmd_result = CmdResult.create(status_code, cmd)
             cmd_result.set_property_string("detail", detail)
-            await async_ten_env.return_result(cmd_result, cmd)
+            await async_ten_env.return_result(cmd_result)
 
     async def on_data(self, async_ten_env: AsyncTenEnv, data: Data) -> None:
         # Get the necessary properties

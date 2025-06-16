@@ -11,9 +11,9 @@ from ten_runtime import (
     AsyncExtension,
     Data,
 )
-from ten.async_ten_env import AsyncTenEnv
-from ten.cmd import Cmd
-from ten.cmd_result import CmdResult, StatusCode
+from ten_runtime.async_ten_env import AsyncTenEnv
+from ten_runtime.cmd import Cmd
+from ten_runtime.cmd_result import CmdResult, StatusCode
 from .const import (
     CMD_PROPERTY_TOOL,
     CMD_TOOL_REGISTER,

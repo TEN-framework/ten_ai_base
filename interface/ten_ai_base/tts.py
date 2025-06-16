@@ -11,10 +11,10 @@ from ten_runtime import (
     AsyncExtension,
     Data,
 )
-from ten.async_ten_env import AsyncTenEnv
-from ten.audio_frame import AudioFrame, AudioFrameDataFmt
-from ten.cmd import Cmd
-from ten.cmd_result import CmdResult, StatusCode
+from ten_runtime.async_ten_env import AsyncTenEnv
+from ten_runtime.audio_frame import AudioFrame, AudioFrameDataFmt
+from ten_runtime.cmd import Cmd
+from ten_runtime.cmd_result import CmdResult, StatusCode
 from .const import CMD_IN_FLUSH, CMD_OUT_FLUSH, DATA_IN_PROPERTY_END_OF_SEGMENT, DATA_IN_PROPERTY_TEXT, DATA_IN_PROPERTY_QUIET
 from .types import TTSPcmOptions
 from .helper import AsyncQueue

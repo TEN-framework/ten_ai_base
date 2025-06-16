@@ -6,11 +6,11 @@ from ten_runtime import (
     Data,
     TenEnv,
 )
-from ten.async_ten_env import AsyncTenEnv
-from ten.audio_frame import AudioFrame
-from ten.cmd import Cmd
-from ten.cmd_result import CmdResult, StatusCode
-from ten.video_frame import VideoFrame
+from ten_runtime.async_ten_env import AsyncTenEnv
+from ten_runtime.audio_frame import AudioFrame
+from ten_runtime.cmd import Cmd
+from ten_runtime.cmd_result import CmdResult, StatusCode
+from ten_runtime.video_frame import VideoFrame
 from .types import LLMToolMetadata, LLMToolResult
 from .const import (
     CMD_TOOL_REGISTER,

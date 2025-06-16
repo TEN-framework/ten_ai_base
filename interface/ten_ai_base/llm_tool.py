@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import asyncio
 import traceback
-from ten import (
+from ten_runtime import (
     AsyncExtension,
     Data,
     TenEnv,

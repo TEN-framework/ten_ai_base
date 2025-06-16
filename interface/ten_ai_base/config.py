@@ -2,7 +2,7 @@ import builtins
 import json
 
 from typing import TypeVar, Type, List
-from ten import AsyncTenEnv, TenEnv
+from ten_runtime import AsyncTenEnv, TenEnv
 from dataclasses import dataclass, fields
 
 

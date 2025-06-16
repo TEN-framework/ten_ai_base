@@ -5,7 +5,7 @@
 # Refer to the "LICENSE" file in the root directory for more information.
 #
 
-from ten import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode
+from ten_runtime import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode
 
 import pytest
 import asyncio

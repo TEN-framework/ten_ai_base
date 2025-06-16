@@ -85,7 +85,7 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
         async_ten_env.log_debug(f"on_data:{data_name}")
 
         if data.get_name() == DATA_TRANSCRIPT:
-            data_payload = data.get_property_to_json(None)
+            data_payload, _ = data.get_property_to_json("")
             async_ten_env.log_debug(
                 f"on_data {data_name}, payload {data_payload}")
 

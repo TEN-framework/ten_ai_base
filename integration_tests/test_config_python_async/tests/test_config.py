@@ -32,7 +32,7 @@ class ExtensionTesterBasicTypesTestConfig(AsyncExtensionTester):
             await ten_env_tester.return_result(CmdResult.create(StatusCode.OK), cmd)
             return
 
-        cmd_prop = cmd.get_property_to_json(None)
+        cmd_prop = cmd.get_property_to_json("")
         prop_json = json.loads(cmd_prop)
         ten_env_tester.log_debug(f"prop_json: {prop_json}")
 

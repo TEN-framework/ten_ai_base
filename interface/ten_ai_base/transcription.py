@@ -30,7 +30,8 @@ class UserTranscription(BaseModel):
     user_id: str = ""
 
     words: list[Word] | None = None
-
+    merged_turns: list[int] | None = None
+    interruptable: bool = False  # whether the text can be interrupted
 
 class AssistantTranscription(BaseModel):
     object: str = "assistant.transcription"  # [required] name of the object
@@ -47,9 +48,11 @@ class AssistantTranscription(BaseModel):
 
     # 0: in-progress, 1: end gracefully, 2: interrupted, otherwise undefined
     turn_status: int = 0
+    source: str = ""
 
     # which stream/user the text belongs to
     stream_id: int = 0
     user_id: str = ""
 
     words: list[Word] | None = None
+    interruptable: bool = False  # whether the text can be interrupted

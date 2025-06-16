@@ -18,7 +18,7 @@ from ten_runtime.cmd_result import CmdResult, StatusCode
 from .const import CMD_IN_FLUSH, CMD_OUT_FLUSH, DATA_IN_PROPERTY_END_OF_SEGMENT, DATA_IN_PROPERTY_TEXT, DATA_IN_PROPERTY_QUIET
 from .types import TTSPcmOptions
 from .helper import AsyncQueue
-from .transcription import AssistantTranscription
+from .transcription import AssistantTranscription, Word
 
 DATA_TRANSCRIPT = "text_data"
 
@@ -39,6 +39,8 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
         self.current_task = None
         self.loop_task = None
         self.leftover_bytes = b''
+
+        self.enable_words = False
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         await super().on_init(ten_env)
@@ -94,7 +96,18 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
                     f"invalid data {data_name} payload, err {e}")
                 return
 
+            if t.object != "assistant.transcription":
+                async_ten_env.log_warn(
+                    f"invalid data {data_name} payload, object {t.object}")
+                return
+            
+            t.source = "tts"
             if t.quiet:
+                if self.enable_words and not t.words:
+                    t.words = [Word(word=t.text, start_ms=t.start_ms, duration_ms=0, stable=True)]
+                data = Data.create(DATA_TRANSCRIPT)
+                data.set_property_from_json("", t.model_dump_json())
+                await async_ten_env.send_data(data)
                 async_ten_env.log_debug("ignore quiet text")
                 return
 

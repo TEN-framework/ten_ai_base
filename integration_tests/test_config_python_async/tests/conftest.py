@@ -7,10 +7,6 @@
 import pytest
 import sys
 import os
-from ten_runtime import (
-    unregister_all_addons_and_cleanup,
-)
-
 
 @pytest.fixture(scope="session", autouse=True)
 def global_setup_and_teardown():
@@ -32,5 +28,3 @@ def global_setup_and_teardown():
     # with the teardown process.
     yield
 
-    # Teardown part.
-    unregister_all_addons_and_cleanup()

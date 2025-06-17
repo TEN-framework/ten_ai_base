@@ -46,24 +46,30 @@ class BaseConfig:
                 match field.type:
                     case builtins.str:
                         val, err = ten_env.get_property_string(field.name)
-                        if not err and val is not None:
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        if val is not None:
                             setattr(self, field.name, val)
                     case builtins.int:
                         val, err = ten_env.get_property_int(field.name)
-                        if not err:
-                            setattr(self, field.name, val)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        setattr(self, field.name, val)
                     case builtins.bool:
                         val, err = ten_env.get_property_bool(field.name)
-                        if not err:
-                            setattr(self, field.name, val)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        setattr(self, field.name, val)
                     case builtins.float:
                         val, err = ten_env.get_property_float(field.name)
-                        if not err:
-                            setattr(self, field.name, val)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        setattr(self, field.name, val)
                     case _:
                         val, err = ten_env.get_property_to_json(field.name)
-                        if not err and val:
-                            setattr(self, field.name, json.loads(val))
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        setattr(self, field.name, json.loads(val))
             except Exception:
                 pass
 
@@ -76,23 +82,30 @@ class BaseConfig:
                 match field.type:
                     case builtins.str:
                         val, err = await ten_env.get_property_string(field.name)
-                        if not err and val is not None:
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        if val is not None:
                             setattr(self, field.name, val)
                     case builtins.int:
                         val, err = await ten_env.get_property_int(field.name)
-                        if not err:
-                            setattr(self, field.name, val)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        setattr(self, field.name, val)
                     case builtins.bool:
                         val, err = await ten_env.get_property_bool(field.name)
-                        if not err:
-                            setattr(self, field.name, val)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        setattr(self, field.name, val)
                     case builtins.float:
                         val, err = await ten_env.get_property_float(field.name)
-                        if not err:
-                            setattr(self, field.name, val)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        setattr(self, field.name, val)
                     case _:
                         val, err = await ten_env.get_property_to_json(field.name)
-                        if not err and val:
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        if val:
                             setattr(self, field.name, json.loads(val))
             except Exception:
                 pass

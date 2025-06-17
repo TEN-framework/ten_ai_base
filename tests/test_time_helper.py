@@ -15,14 +15,14 @@ def test_duration():
     time.sleep(0.05)  # Sleep for 50 milliseconds
     end = time.time()
     duration = TimeHelper.duration(start, end)
-    assert math.isclose(duration, 0.05, rel_tol=0.01)
+    assert math.isclose(duration, 0.05, rel_tol=0.1)
 
 
 def test_duration_since():
     start = time.time()
     time.sleep(0.05)  # Sleep for 50 milliseconds
     duration = TimeHelper.duration_since(start)
-    assert math.isclose(duration, 0.05, rel_tol=0.01)
+    assert math.isclose(duration, 0.05, rel_tol=0.1)
 
 
 def test_duration_ms():

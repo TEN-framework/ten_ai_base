@@ -76,7 +76,7 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
         async_ten_env.log_debug(f"on_cmd name {cmd_name}")
         if cmd_name == CMD_TOOL_REGISTER:
             try:
-                tool_metadata_json = cmd.get_property_to_json(
+                tool_metadata_json, _ = cmd.get_property_to_json(
                     CMD_PROPERTY_TOOL)
                 async_ten_env.log_info(f"register tool: {tool_metadata_json}")
                 tool_metadata = LLMToolMetadata.model_validate_json(
@@ -93,7 +93,8 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
                 )
         elif cmd_name == CMD_CHAT_COMPLETION_CALL:
             try:
-                args = json.loads(cmd.get_property_to_json("arguments"))
+                arguments_str, _ = cmd.get_property_to_json("arguments")
+                args = json.loads(arguments_str)
                 response = await self.on_call_chat_completion(async_ten_env, **args)
                 cmd_result = CmdResult.create(StatusCode.OK, cmd)
                 cmd_result.set_property_from_json("response", response)

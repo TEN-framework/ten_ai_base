@@ -44,8 +44,8 @@ class AsyncLLMToolBaseExtension(AsyncExtension, ABC):
 
         if cmd_name == CMD_TOOL_CALL:
             try:
-                tool_name = cmd.get_property_string("name")
-                tool_args = json.loads(cmd.get_property_to_json("arguments"))
+                tool_name, _ = cmd.get_property_string("name")
+                tool_args, _ = json.loads(cmd.get_property_to_json("arguments"))
                 async_ten_env.log_debug(
                     f"tool_name: {tool_name}, tool_args: {tool_args}"
                 )

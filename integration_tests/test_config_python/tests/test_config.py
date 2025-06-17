@@ -29,7 +29,7 @@ class ExtensionTesterBasicTypesTestConfig(ExtensionTester):
 
         cmd_name = cmd.get_name()
         if cmd_name != "test_cmd":
-            ten_env_tester.return_result(CmdResult.create(StatusCode.OK), cmd)
+            ten_env_tester.return_result(CmdResult.create(StatusCode.OK, cmd))
             return
 
         cmd_prop, _ = cmd.get_property_to_json("")
@@ -42,7 +42,7 @@ class ExtensionTesterBasicTypesTestConfig(ExtensionTester):
         assert prop_json["c_bool"] == True
         assert prop_json["c_str_enum"] == "example_1"
 
-        ten_env_tester.return_result(CmdResult.create(StatusCode.OK), cmd)
+        ten_env_tester.return_result(CmdResult.create(StatusCode.OK, cmd))
 
         ten_env_tester.stop_test()
 

@@ -1,16 +1,16 @@
 from abc import ABC, abstractmethod
 import asyncio
 import traceback
-from ten import (
+from ten_runtime import (
     AsyncExtension,
     Data,
     TenEnv,
 )
-from ten.async_ten_env import AsyncTenEnv
-from ten.audio_frame import AudioFrame
-from ten.cmd import Cmd
-from ten.cmd_result import CmdResult, StatusCode
-from ten.video_frame import VideoFrame
+from ten_runtime.async_ten_env import AsyncTenEnv
+from ten_runtime.audio_frame import AudioFrame
+from ten_runtime.cmd import Cmd
+from ten_runtime.cmd_result import CmdResult, StatusCode
+from ten_runtime.video_frame import VideoFrame
 from .types import LLMToolMetadata, LLMToolResult
 from .const import (
     CMD_TOOL_REGISTER,
@@ -44,8 +44,12 @@ class AsyncLLMToolBaseExtension(AsyncExtension, ABC):
 
         if cmd_name == CMD_TOOL_CALL:
             try:
-                tool_name = cmd.get_property_string("name")
-                tool_args = json.loads(cmd.get_property_to_json("arguments"))
+                tool_name, err = cmd.get_property_string("name")
+                if err:
+                    raise RuntimeError(f"Failed to get tool name: {err}")
+                tool_args, err = json.loads(cmd.get_property_to_json("arguments"))
+                if err:
+                    raise RuntimeError(f"Failed to get tool arguments: {err}")
                 async_ten_env.log_debug(
                     f"tool_name: {tool_name}, tool_args: {tool_args}"
                 )
@@ -55,24 +59,24 @@ class AsyncLLMToolBaseExtension(AsyncExtension, ABC):
 
                 if result is None:
                     await async_ten_env.return_result(
-                        CmdResult.create(StatusCode.OK), cmd
+                        CmdResult.create(StatusCode.OK, cmd)
                     )
                     return
 
-                cmd_result: CmdResult = CmdResult.create(StatusCode.OK)
+                cmd_result: CmdResult = CmdResult.create(StatusCode.OK, cmd)
                 cmd_result.set_property_from_json(
                     CMD_PROPERTY_RESULT, json.dumps(result)
                 )
-                await async_ten_env.return_result(cmd_result, cmd)
+                await async_ten_env.return_result(cmd_result)
                 async_ten_env.log_info(f"tool result done, {result}")
             except Exception:
                 async_ten_env.log_warn(
                     f"on_cmd failed: {traceback.format_exc()}")
                 await async_ten_env.return_result(
-                    CmdResult.create(StatusCode.ERROR), cmd
+                    CmdResult.create(StatusCode.ERROR, cmd)
                 )
         else:
-            await async_ten_env.return_result(CmdResult.create(StatusCode.OK), cmd)
+            await async_ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
 
     async def on_data(self, async_ten_env: AsyncTenEnv, data: Data) -> None:
         data_name = data.get_name()

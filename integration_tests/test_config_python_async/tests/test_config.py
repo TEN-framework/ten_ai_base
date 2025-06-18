@@ -5,7 +5,7 @@
 # Refer to the "LICENSE" file in the root directory for more information.
 #
 
-from ten import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode
+from ten_runtime import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode
 
 import pytest
 import asyncio
@@ -29,10 +29,12 @@ class ExtensionTesterBasicTypesTestConfig(AsyncExtensionTester):
 
         cmd_name = cmd.get_name()
         if cmd_name != "test_cmd":
-            await ten_env_tester.return_result(CmdResult.create(StatusCode.OK), cmd)
+            await ten_env_tester.return_result(CmdResult.create(StatusCode.OK, cmd))
             return
 
-        cmd_prop = cmd.get_property_to_json("")
+        cmd_prop, err = cmd.get_property_to_json("")
+        if err:
+            raise RuntimeError(f"Failed to get property to JSON: {err}")
         prop_json = json.loads(cmd_prop)
         ten_env_tester.log_debug(f"prop_json: {prop_json}")
 
@@ -42,7 +44,7 @@ class ExtensionTesterBasicTypesTestConfig(AsyncExtensionTester):
         assert prop_json["c_bool"] == True
         assert prop_json["c_str_enum"] == "example_1"
 
-        await ten_env_tester.return_result(CmdResult.create(StatusCode.OK), cmd)
+        await ten_env_tester.return_result(CmdResult.create(StatusCode.OK, cmd))
 
         ten_env_tester.stop_test()
 

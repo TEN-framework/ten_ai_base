@@ -5,7 +5,7 @@
 # Refer to the "LICENSE" file in the root directory for more information.
 #
 
-from ten import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode, Data, AudioFrame, AudioFrameDataFmt
+from ten_runtime import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode, Data, AudioFrame, AudioFrameDataFmt
 
 import pytest
 import asyncio
@@ -49,7 +49,7 @@ class ExtensionTesterFlush(AsyncExtensionTester):
     async def on_cmd(self, ten_env_tester: AsyncTenEnvTester, cmd: Cmd) -> None:
         cmd_name = cmd.get_name()
         ten_env_tester.log_debug(f"on_cmd: {cmd_name}")
-        await ten_env_tester.return_result(CmdResult.create(StatusCode.OK), cmd)
+        await ten_env_tester.return_result(CmdResult.create(StatusCode.OK, cmd))
 
         if cmd_name != "flush":
             return

@@ -2,7 +2,7 @@ import builtins
 import json
 
 from typing import TypeVar, Type, List
-from ten import AsyncTenEnv, TenEnv
+from ten_runtime import AsyncTenEnv, TenEnv
 from dataclasses import dataclass, fields
 
 
@@ -39,55 +39,73 @@ class BaseConfig:
 
     def _init(self, ten_env: TenEnv):
         """
-        Get property from ten_env to initialize the dataclass config.    
+        Get property from ten_env to initialize the dataclass config.
         """
         for field in fields(self):
-            # TODO: 'is_property_exist' has a bug that can not be used in async extension currently, use it instead of try .. except once fixed
-            # if not ten_env.is_property_exist(field.name):
-            #     continue
             try:
                 match field.type:
                     case builtins.str:
-                        val = ten_env.get_property_string(field.name)
-                        if val:
+                        val, err = ten_env.get_property_string(field.name)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        if val is not None:
                             setattr(self, field.name, val)
                     case builtins.int:
-                        val = ten_env.get_property_int(field.name)
+                        val, err = ten_env.get_property_int(field.name)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
                         setattr(self, field.name, val)
                     case builtins.bool:
-                        val = ten_env.get_property_bool(field.name)
+                        val, err = ten_env.get_property_bool(field.name)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
                         setattr(self, field.name, val)
                     case builtins.float:
-                        val = ten_env.get_property_float(field.name)
+                        val, err = ten_env.get_property_float(field.name)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
                         setattr(self, field.name, val)
                     case _:
-                        val = ten_env.get_property_to_json(field.name)
+                        val, err = ten_env.get_property_to_json(field.name)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
                         setattr(self, field.name, json.loads(val))
-            except Exception as e:
+            except Exception:
                 pass
 
     async def _init_async(self, ten_env: AsyncTenEnv):
         """
-        Get property from ten_env to initialize the dataclass config.    
+        Get property from ten_env to initialize the dataclass config.
         """
         for field in fields(self):
             try:
                 match field.type:
                     case builtins.str:
-                        val = await ten_env.get_property_string(field.name)
-                        if val:
+                        val, err = await ten_env.get_property_string(field.name)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        if val is not None:
                             setattr(self, field.name, val)
                     case builtins.int:
-                        val = await ten_env.get_property_int(field.name)
+                        val, err = await ten_env.get_property_int(field.name)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
                         setattr(self, field.name, val)
                     case builtins.bool:
-                        val = await ten_env.get_property_bool(field.name)
+                        val, err = await ten_env.get_property_bool(field.name)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
                         setattr(self, field.name, val)
                     case builtins.float:
-                        val = await ten_env.get_property_float(field.name)
+                        val, err = await ten_env.get_property_float(field.name)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
                         setattr(self, field.name, val)
                     case _:
-                        val = await ten_env.get_property_to_json(field.name)
-                        setattr(self, field.name, json.loads(val))
-            except Exception as e:
+                        val, err = await ten_env.get_property_to_json(field.name)
+                        if err:
+                            raise RuntimeError(f"Failed to  get property {field.name}: {err}")
+                        if val:
+                            setattr(self, field.name, json.loads(val))
+            except Exception:
                 pass

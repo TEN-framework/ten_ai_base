@@ -10,7 +10,7 @@ from collections import deque
 from datetime import datetime
 import functools
 from typing import Callable
-from ten.async_ten_env import AsyncTenEnv
+from ten_runtime.async_ten_env import AsyncTenEnv
 import time
 
 

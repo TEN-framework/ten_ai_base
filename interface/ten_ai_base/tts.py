@@ -7,14 +7,14 @@ from abc import ABC, abstractmethod
 import asyncio
 import traceback
 
-from ten import (
+from ten_runtime import (
     AsyncExtension,
     Data,
 )
-from ten.async_ten_env import AsyncTenEnv
-from ten.audio_frame import AudioFrame, AudioFrameDataFmt
-from ten.cmd import Cmd
-from ten.cmd_result import CmdResult, StatusCode
+from ten_runtime.async_ten_env import AsyncTenEnv
+from ten_runtime.audio_frame import AudioFrame, AudioFrameDataFmt
+from ten_runtime.cmd import Cmd
+from ten_runtime.cmd_result import CmdResult, StatusCode
 from .const import CMD_IN_FLUSH, CMD_OUT_FLUSH, DATA_IN_PROPERTY_END_OF_SEGMENT, DATA_IN_PROPERTY_TEXT, DATA_IN_PROPERTY_QUIET
 from .types import TTSPcmOptions
 from .helper import AsyncQueue
@@ -70,14 +70,14 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
             await async_ten_env.send_cmd(Cmd.create(CMD_OUT_FLUSH))
             async_ten_env.log_debug("on_cmd sent flush")
             status_code, detail = StatusCode.OK, "success"
-            cmd_result = CmdResult.create(status_code)
+            cmd_result = CmdResult.create(status_code, cmd)
             cmd_result.set_property_string("detail", detail)
-            await async_ten_env.return_result(cmd_result, cmd)
+            await async_ten_env.return_result(cmd_result)
         else:
             status_code, detail = StatusCode.OK, "success"
-            cmd_result = CmdResult.create(status_code)
+            cmd_result = CmdResult.create(status_code, cmd)
             cmd_result.set_property_string("detail", detail)
-            await async_ten_env.return_result(cmd_result, cmd)
+            await async_ten_env.return_result(cmd_result)
 
     async def on_data(self, async_ten_env: AsyncTenEnv, data: Data) -> None:
         # Get the necessary properties
@@ -85,7 +85,9 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
         async_ten_env.log_debug(f"on_data:{data_name}")
 
         if data.get_name() == DATA_TRANSCRIPT:
-            data_payload = data.get_property_to_json("")
+            data_payload, err = data.get_property_to_json("")
+            if err:
+                raise RuntimeError(f"Failed to get data payload: {err}")
             async_ten_env.log_debug(
                 f"on_data {data_name}, payload {data_payload}")
 

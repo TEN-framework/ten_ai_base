@@ -5,7 +5,7 @@
 # Refer to the "LICENSE" file in the root directory for more information.
 #
 
-from ten import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode, Data, AudioFrame, AudioFrameDataFmt
+from ten_runtime import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode, Data, AudioFrame, AudioFrameDataFmt
 
 import pytest
 import asyncio
@@ -20,6 +20,7 @@ class ExtensionTesterBasicTextToSpeech(AsyncExtensionTester):
         self.received_frames = 0
 
     async def on_start(self, ten_env_tester: AsyncTenEnvTester) -> None:
+        await asyncio.sleep(0.1)
         text_data = Data.create("text_data")
         text_data.set_property_string("text", "How are you today?")
         await ten_env_tester.send_data(text_data)

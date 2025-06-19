@@ -4,7 +4,9 @@ from enum import Enum
 class ModuleType(Enum):
     LLM = "llm"
     TTS = "tts"
-    
+    MLLM = "mllm"
+    STT = "asr"
+
 class ErrorMessage(BaseModel):
     object: str = "message.error"
     module: str = ""

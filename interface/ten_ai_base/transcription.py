@@ -33,6 +33,8 @@ class UserTranscription(BaseModel):
     merged_turns: list[int] | None = None
     interruptable: bool = False  # whether the text can be interrupted
 
+    metadata: dict | None = None  # additional metadata for the transcription
+
 class AssistantTranscription(BaseModel):
     object: str = "assistant.transcription"  # [required] name of the object
     text: str = ""      # [required] text for display
@@ -56,3 +58,5 @@ class AssistantTranscription(BaseModel):
 
     words: list[Word] | None = None
     interruptable: bool = False  # whether the text can be interrupted
+
+    metadata: dict | None = None  # additional metadata for the transcription

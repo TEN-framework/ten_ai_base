@@ -1,0 +1,159 @@
+{
+    "property": {},
+    "audio_frame_in": [
+        {
+            "name": "pcm_frame",
+            "property": {
+                "metadata": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    ],
+    "data_in": [
+        {
+            "name": "drain",
+            "property": {
+                "id": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    ],
+    "data_out": [
+        {
+            "name": "asr_result",
+            "property": {
+                "id": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "final": {
+                    "type": "bool"
+                },
+                "start_ms": {
+                    "type": "int64"
+                },
+                "duration_ms": {
+                    "type": "int64"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "words": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "word": {
+                                "type": "string"
+                            },
+                            "start_ms": {
+                                "type": "int64"
+                            },
+                            "duration_ms": {
+                                "type": "int64"
+                            },
+                            "stable": {
+                                "type": "bool"
+                            }
+                        }
+                    }
+                },
+                "metadata": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "required": [
+                "id",
+                "text",
+                "final",
+                "start_ms",
+                "duration_ms",
+                "language"
+            ]
+        },
+        {
+            "name": "on_drain_end",
+            "property": {
+                "id": {
+                    "type": "string"
+                },
+                "latency_ms": {
+                    "type": "int64"
+                },
+                "metadata": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "required": [
+                "latency_ms"
+            ]
+        },
+        {
+            "name": "on_asr_error",
+            "property": {
+                "id": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "int64"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "vendor_info": {
+                    "type": "object",
+                    "properties": {
+                        "vendor": {
+                            "type": "string"
+                        },
+                        "code": {
+                            "type": "int64"
+                        },
+                        "message": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "metadata": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "required": [
+                "code",
+                "message"
+            ]
+        }
+    ]
+}

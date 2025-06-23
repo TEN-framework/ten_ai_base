@@ -132,3 +132,14 @@ class TTSPcmOptions(TypedDict, total=False):
 
     bytes_per_sample: int
     """The number of bytes per sample."""
+
+
+class VendorError(BaseModel):
+    vendor: str
+    """The name of the vendor."""
+
+    code: str
+    """The error code."""
+
+    message: str
+    """A human-readable error message."""

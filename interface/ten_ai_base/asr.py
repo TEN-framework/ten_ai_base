@@ -23,6 +23,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.ten_env: AsyncTenEnv = None
         self.loop = None
         self.session_id = None
+        self.sent_buffer_length = 0
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
@@ -43,7 +44,10 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         self.session_id, _ = frame.get_property_int("session_id")
 
-        await self.send_audio(frame)
+        success = await self.send_audio(frame)
+
+        if success:
+            self.sent_buffer_length += len(frame_buf)
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_stop")
@@ -76,11 +80,32 @@ class AsyncASRBaseExtension(AsyncExtension):
         raise NotImplementedError("This method should be implemented in subclasses.")
 
     @abstractmethod
+    def input_audio_sample_rate(self) -> int:
+        """
+        Get the input audio sample rate in Hz.
+        """
+        raise NotImplementedError("This method should be implemented in subclasses.")
+
+    def input_audio_channels(self) -> int:
+        """
+        Get the number of audio channels for input.
+        Default is 1 (mono).
+        """
+        return 1
+
+    def input_audio_sample_width(self) -> int:
+        """
+        Get the sample width in bytes for input audio.
+        Default is 2 (16-bit PCM).
+        """
+        return 2
+
+    @abstractmethod
     async def send_audio(
         self, frame: AudioFrame
-    ) -> None:
+    ) -> bool:
         """
-        Send an audio frame to the ASR service.
+        Send an audio frame to the ASR service, returning True if successful.
         """
         raise NotImplementedError("This method should be implemented in subclasses.")
 
@@ -100,13 +125,20 @@ class AsyncASRBaseExtension(AsyncExtension):
         stable_data = Data.create("asr_result")
 
         model_json = transcription.model_dump()
+        sent_duration = self.calculate_audio_duration(
+            self.sent_buffer_length,
+            self.input_audio_sample_rate(),
+            self.input_audio_channels(),
+            self.input_audio_sample_width()
+        )
+
 
         stable_data.set_property_from_json(None, json.dumps({
             "id": "user.transcription",
             "text": transcription.text,
             "final": transcription.final,
-            "start_ms": transcription.start_ms,
-            "duration_ms": transcription.duration_ms,
+            "start_ms": sent_duration + transcription.start_ms,
+            "duration_ms":  transcription.duration_ms,
             "language": transcription.language,
             "words": model_json.get("words", []),
             "metadata": {
@@ -148,3 +180,19 @@ class AsyncASRBaseExtension(AsyncExtension):
         }))
 
         asyncio.create_task(self.ten_env.send_data(drain_data))
+
+    def calculate_audio_duration(self, bytes_length: int, sample_rate: int, channels: int = 1, sample_width: int = 2) -> float:
+        """
+        Calculate audio duration in seconds.
+
+        Parameters:
+        - bytes_length: Length of the audio data in bytes
+        - sample_rate: Sample rate in Hz (e.g., 16000)
+        - channels: Number of audio channels (default: 1 for mono)
+        - sample_width: Number of bytes per sample (default: 2 for 16-bit PCM)
+
+        Returns:
+        - Duration in seconds
+        """
+        bytes_per_second = sample_rate * channels * sample_width
+        return bytes_length / bytes_per_second

@@ -5,6 +5,7 @@ from .transcription import UserTranscription
 from ten_runtime import (
     AsyncExtension,
     AsyncTenEnv,
+    AsyncTenEnvTester,
     Cmd,
     Data,
     AudioFrame,
@@ -21,29 +22,40 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.stopped = False
         self.ten_env: AsyncTenEnv = None
         self.loop = None
+        self.session_id = None
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
         self.loop = asyncio.get_event_loop()
         self.ten_env = ten_env
-        self.session_id = None
 
         self.loop.create_task(self.start_connection())
 
-    async def on_audio_frame(self, _: AsyncTenEnv, frame: AudioFrame) -> None:
+    async def on_audio_frame(self, ten_env: AsyncTenEnv, frame: AudioFrame) -> None:
         frame_buf = frame.get_buf()
-
         if not frame_buf:
-            self.ten_env.log_warn("send_frame: empty pcm_frame detected.")
+            ten_env.log_warn("send_frame: empty pcm_frame detected.")
             return
 
         if not self.is_connected():
-            self.ten_env.log_debug("send_frame: service not connected.")
+            ten_env.log_debug("send_frame: service not connected.")
             return
 
         self.session_id, _ = frame.get_property_int("session_id")
 
-        await self.send_audio_frame(frame)
+        await self.send_audio(frame)
+
+    async def on_data(self, ten_env: AsyncTenEnvTester, data: Data) -> None:
+        json_data, _ = data.get_property_to_json("asr_result")
+
+        ten_env.log_info(
+            f"on_data json: {json_data}"
+        )
+
+        # assert stream_id == 123
+        # assert user_id == "123"
+
+        ten_env.stop_test()
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_stop")
@@ -66,7 +78,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         raise NotImplementedError("This method should be implemented in subclasses.")
 
     @abstractmethod
-    async def is_connected(self) -> bool:
+    def is_connected(self) -> bool:
         """Check if the ASR service is connected."""
         raise NotImplementedError("This method should be implemented in subclasses.")
 
@@ -76,7 +88,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         raise NotImplementedError("This method should be implemented in subclasses.")
 
     @abstractmethod
-    async def send_audio_frame(
+    async def send_audio(
         self, frame: AudioFrame
     ) -> None:
         """

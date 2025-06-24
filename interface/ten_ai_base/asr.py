@@ -45,18 +45,6 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         await self.send_audio(frame)
 
-    async def on_data(self, ten_env: AsyncTenEnvTester, data: Data) -> None:
-        json_data, _ = data.get_property_to_json("asr_result")
-
-        ten_env.log_info(
-            f"on_data json: {json_data}"
-        )
-
-        # assert stream_id == 123
-        # assert user_id == "123"
-
-        ten_env.stop_test()
-
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_stop")
 

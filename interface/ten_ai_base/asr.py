@@ -146,7 +146,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             }
         }))
 
-        asyncio.create_task(self.ten_env.send_data(stable_data))
+        await self.ten_env.send_data(stable_data))
 
     async def send_asr_error(self, code: int, message: str, error: VendorError) -> None:
         """
@@ -163,7 +163,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             }
         }))
 
-        asyncio.create_task(self.ten_env.send_data(error_data))
+        await self.ten_env.send_data(error_data)
 
 
     async def send_asr_drain_end(self, latency_ms: int) -> None:
@@ -179,7 +179,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             }
         }))
 
-        asyncio.create_task(self.ten_env.send_data(drain_data))
+        await self.ten_env.send_data(drain_data)
 
     def calculate_audio_duration(self, bytes_length: int, sample_rate: int, channels: int = 1, sample_width: int = 2) -> float:
         """

@@ -48,7 +48,7 @@ class BaseConfig:
                         val, err = ten_env.get_property_string(field.name)
                         if err:
                             raise RuntimeError(f"Failed to  get property {field.name}: {err}")
-                        if val is not None:
+                        if val:
                             setattr(self, field.name, val)
                     case builtins.int:
                         val, err = ten_env.get_property_int(field.name)
@@ -84,7 +84,7 @@ class BaseConfig:
                         val, err = await ten_env.get_property_string(field.name)
                         if err:
                             raise RuntimeError(f"Failed to  get property {field.name}: {err}")
-                        if val is not None:
+                        if val:
                             setattr(self, field.name, val)
                     case builtins.int:
                         val, err = await ten_env.get_property_int(field.name)

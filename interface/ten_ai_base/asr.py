@@ -146,7 +146,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             }
         }))
 
-        await self.ten_env.send_data(stable_data))
+        await self.ten_env.send_data(stable_data)
 
     async def send_asr_error(self, code: int, message: str, error: VendorError) -> None:
         """

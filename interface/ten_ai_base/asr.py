@@ -42,7 +42,11 @@ class AsyncASRBaseExtension(AsyncExtension):
             ten_env.log_debug("send_frame: service not connected.")
             return
 
-        self.session_id, _ = frame.get_property_int("session_id")
+        metadata, _ = frame.get_property_to_json("metadata")
+        if metadata:
+            metadata_json = json.loads(metadata)
+            if "session_id" in metadata_json:
+                self.session_id = metadata_json["session_id"]
 
         success = await self.send_audio(frame)
 

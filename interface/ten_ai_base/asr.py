@@ -1,4 +1,5 @@
 from abc import abstractmethod
+import uuid
 
 from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigModeKeep
 
@@ -26,6 +27,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.loop = None
         self.session_id = None
         self.sent_buffer_length = 0
+        self.buffered_frames = asyncio.Queue[AudioFrame]()
+        self.buffered_frames_size = 0
+        self.uuid = self.get_uuid()  # Unique identifier for the current final turn
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
@@ -44,13 +48,37 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         if not self.is_connected():
             ten_env.log_debug("send_frame: service not connected.")
+            buffer_strategy = self.buffer_strategy()
+            if isinstance(buffer_strategy, ASRBufferConfigModeKeep):
+                byte_limit = buffer_strategy.byte_limit
+                while self.buffered_frames_size + len(frame_buf) > byte_limit:
+                    if self.buffered_frames.empty():
+                        break
+                    discard_frame = await self.buffered_frames.get()
+                    self.buffered_frames_size -= len(discard_frame.get_buf())
+                self.buffered_frames.put_nowait(frame)
+                self.buffered_frames_size += len(frame_buf)
+            # return anyway if not connected
             return
+
 
         metadata, _ = frame.get_property_to_json("metadata")
         if metadata:
-            metadata_json = json.loads(metadata)
-            if "session_id" in metadata_json:
-                self.session_id = metadata_json["session_id"]
+            try:
+                metadata_json = json.loads(metadata)
+                self.session_id = metadata_json.get("session_id", self.session_id)
+            except json.JSONDecodeError as e:
+                ten_env.log_warn(f"send_frame: invalid metadata json - {e}")
+
+        if self.buffered_frames.qsize() > 0:
+            ten_env.log_debug(f"send_frame: flushing {self.buffered_frames.qsize()} buffered frames.")
+            while True:
+                try:
+                    buffered_frame = self.buffered_frames.get_nowait()
+                    await self.send_audio(buffered_frame, self.session_id)
+                except asyncio.QueueEmpty:
+                    break
+            self.buffered_frames_size = 0
 
         success = await self.send_audio(frame, self.session_id)
 
@@ -169,7 +197,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             None,
             json.dumps(
                 {
-                    "id": "user.transcription",
+                    "id": self.uuid,
                     "text": transcription.text,
                     "final": transcription.final,
                     "start_ms": sent_duration + transcription.start_ms,
@@ -182,6 +210,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         )
 
         await self.ten_env.send_data(stable_data)
+
+        if transcription.final:
+            self.uuid = self.get_uuid()  # Reset UUID for the next final turn
 
     async def send_asr_error(
         self, error: ErrorMessage, vendor_info: ErrorMessageVendorInfo
@@ -248,3 +279,10 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         bytes_per_second = sample_rate * channels * sample_width
         return bytes_length / bytes_per_second
+
+
+    def get_uuid(self) -> str:
+        """
+        Get a unique identifier
+        """
+        return uuid.uuid4().hex

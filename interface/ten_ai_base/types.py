@@ -145,4 +145,4 @@ class ASRBufferConfigModeKeep(BaseModel):
 class ASRBufferConfigModeDiscard(BaseModel):
     mode: Literal["discard"] = "discard"
 
-ASRBufferConfig: TypeAlias = Union[ASRBufferConfigModeKeep, ASRBufferConfigModelDiscard]
+ASRBufferConfig: TypeAlias = Union[ASRBufferConfigModeKeep, ASRBufferConfigModeDiscard]

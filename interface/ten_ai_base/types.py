@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Iterable, Optional, TypeAlias, Union, Dict, Any
 from pydantic import BaseModel
 from dataclasses import field
@@ -60,13 +61,16 @@ class LLMChatCompletionContentPartTextParam(TypedDict, total=False):
 
 
 LLMChatCompletionContentPartParam: TypeAlias = Union[
-    LLMChatCompletionContentPartTextParam, LLMChatCompletionContentPartImageParam, LLMChatCompletionContentPartInputAudioParam
+    LLMChatCompletionContentPartTextParam,
+    LLMChatCompletionContentPartImageParam,
+    LLMChatCompletionContentPartInputAudioParam,
 ]
 
 
 class LLMChatCompletionToolMessageParam(TypedDict, total=False):
-    content: Required[Union[str,
-                            Iterable[LLMChatCompletionContentPartTextParam]]]
+    content: Required[
+        Union[str, Iterable[LLMChatCompletionContentPartTextParam]]
+    ]
     """The contents of the tool message."""
 
     role: Required[Literal["tool"]]
@@ -134,12 +138,11 @@ class TTSPcmOptions(TypedDict, total=False):
     """The number of bytes per sample."""
 
 
-class VendorError(BaseModel):
-    vendor: str
-    """The name of the vendor."""
+class ASRBufferConfigModeKeep(BaseModel):
+    mode: Literal["keep"] = "keep"
+    byte_limit: int = 10
 
-    code: str
-    """The error code."""
+class ASRBufferConfigModeDiscard(BaseModel):
+    mode: Literal["discard"] = "discard"
 
-    message: str
-    """A human-readable error message."""
+ASRBufferConfig: TypeAlias = Union[ASRBufferConfigModeKeep, ASRBufferConfigModelDiscard]

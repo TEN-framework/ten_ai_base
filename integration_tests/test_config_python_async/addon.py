@@ -15,4 +15,5 @@ from .extension import TestConfigPythonAsyncExtension
 class TestConfigPythonAsyncAddon(Addon):
     def on_create_instance(self, ten_env: TenEnv, name: str, context) -> None:
         ten_env.on_create_instance_done(
-            TestConfigPythonAsyncExtension(name), context)
+            TestConfigPythonAsyncExtension(name), context
+        )

@@ -23,7 +23,11 @@ def get_property_bool(ten_env: AsyncTenEnv, property_name: str) -> bool:
         return False
 
 
-def get_properties_bool(ten_env: AsyncTenEnv, property_names: list[str], callback: Callable[[str, bool], None]) -> None:
+def get_properties_bool(
+    ten_env: AsyncTenEnv,
+    property_names: list[str],
+    callback: Callable[[str, bool], None],
+) -> None:
     """Helper to get boolean properties from ten_env with error handling."""
     for property_name in property_names:
         callback(property_name, get_property_bool(ten_env, property_name))
@@ -38,7 +42,11 @@ def get_property_string(ten_env: AsyncTenEnv, property_name: str) -> str:
         return ""
 
 
-def get_properties_string(ten_env: AsyncTenEnv, property_names: list[str], callback: Callable[[str, str], None]) -> None:
+def get_properties_string(
+    ten_env: AsyncTenEnv,
+    property_names: list[str],
+    callback: Callable[[str, str], None],
+) -> None:
     """Helper to get string properties from ten_env with error handling."""
     for property_name in property_names:
         callback(property_name, get_property_string(ten_env, property_name))
@@ -53,7 +61,11 @@ def get_property_int(ten_env: AsyncTenEnv, property_name: str) -> int:
         return 0
 
 
-def get_properties_int(ten_env: AsyncTenEnv, property_names: list[str], callback: Callable[[str, int], None]) -> None:
+def get_properties_int(
+    ten_env: AsyncTenEnv,
+    property_names: list[str],
+    callback: Callable[[str, int], None],
+) -> None:
     """Helper to get int properties from ten_env with error handling."""
     for property_name in property_names:
         callback(property_name, get_property_int(ten_env, property_name))
@@ -68,7 +80,11 @@ def get_property_float(ten_env: AsyncTenEnv, property_name: str) -> float:
         return 0.0
 
 
-def get_properties_float(ten_env: AsyncTenEnv, property_names: list[str], callback: Callable[[str, float], None]) -> None:
+def get_properties_float(
+    ten_env: AsyncTenEnv,
+    property_names: list[str],
+    callback: Callable[[str, float], None],
+) -> None:
     """Helper to get float properties from ten_env with error handling."""
     for property_name in property_names:
         callback(property_name, get_property_float(ten_env, property_name))
@@ -137,7 +153,9 @@ def generate_file_name(prefix: str) -> str:
 
 
 class PCMWriter:
-    def __init__(self, prefix: str, write_pcm: bool, buffer_size: int = 1024 * 64):
+    def __init__(
+        self, prefix: str, write_pcm: bool, buffer_size: int = 1024 * 64
+    ):
         self.write_pcm = write_pcm
         self.buffer = bytearray()
         self.buffer_size = buffer_size
@@ -165,8 +183,9 @@ class PCMWriter:
         if self.file_name:
             await self.loop.run_in_executor(
                 None,
-                functools.partial(write_pcm_to_file,
-                                  self.buffer[:], self.file_name),
+                functools.partial(
+                    write_pcm_to_file, self.buffer[:], self.file_name
+                ),
             )
         self.buffer.clear()
 

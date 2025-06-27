@@ -26,10 +26,16 @@ class ChatMemory:
 
             while True:
                 history_count = len(self.history)
-                if history_count > 0 and history_count > self.max_history_length:
+                if (
+                    history_count > 0
+                    and history_count > self.max_history_length
+                ):
                     self.emit(EVENT_MEMORY_EXPIRED, self.history.pop(0))
                     continue
-                if history_count > 0 and (self.history[0]["role"] == "assistant" or self.history[0]["role"] == "tool"):
+                if history_count > 0 and (
+                    self.history[0]["role"] == "assistant"
+                    or self.history[0]["role"] == "tool"
+                ):
                     # we cannot have an assistant message at the start of the chat history
                     # if after removal of the first, we have an assistant message,
                     # we need to remove the assistant message too
@@ -60,6 +66,7 @@ class ChatMemory:
         if event_name in self.listeners:
             for listener in self.listeners[event_name]:
                 listener(*args, **kwargs)
+
 
 class AsyncChatMemory:
     def __init__(self, max_history_length):

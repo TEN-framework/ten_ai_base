@@ -43,7 +43,9 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
         super().__init__(name)
         self.queue = AsyncQueue()
         self.available_tools: list[LLMToolMetadata] = []
-        self.available_tools_lock = asyncio.Lock()  # Lock to ensure thread-safe access
+        self.available_tools_lock = (
+            asyncio.Lock()
+        )  # Lock to ensure thread-safe access
         self.current_task = None
         self.hit_default_cmd = False
         self.loop_task = None
@@ -58,7 +60,8 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
         if self.loop_task is None:
             self.loop = asyncio.get_event_loop()
             self.loop_task = self.loop.create_task(
-                self._process_queue(async_ten_env))
+                self._process_queue(async_ten_env)
+            )
 
     async def on_stop(self, async_ten_env: AsyncTenEnv) -> None:
         await super().on_stop(async_ten_env)
@@ -77,19 +80,24 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
         if cmd_name == CMD_TOOL_REGISTER:
             try:
                 tool_metadata_json, err = cmd.get_property_to_json(
-                    CMD_PROPERTY_TOOL)
+                    CMD_PROPERTY_TOOL
+                )
                 if err:
                     raise RuntimeError(f"Failed to  get tool metadata: {err}")
                 async_ten_env.log_info(f"register tool: {tool_metadata_json}")
                 tool_metadata = LLMToolMetadata.model_validate_json(
-                    tool_metadata_json)
+                    tool_metadata_json
+                )
                 async with self.available_tools_lock:
                     self.available_tools.append(tool_metadata)
                 await self.on_tools_update(async_ten_env, tool_metadata)
-                await async_ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
+                await async_ten_env.return_result(
+                    CmdResult.create(StatusCode.OK, cmd)
+                )
             except Exception:
                 async_ten_env.log_warn(
-                    f"on_cmd failed: {traceback.format_exc()}")
+                    f"on_cmd failed: {traceback.format_exc()}"
+                )
                 await async_ten_env.return_result(
                     CmdResult.create(StatusCode.ERROR, cmd)
                 )
@@ -99,7 +107,9 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
                 if err:
                     raise RuntimeError(f"Failed  to get arguments: {err}")
                 args = json.loads(arguments_str)
-                response = await self.on_call_chat_completion(async_ten_env, **args)
+                response = await self.on_call_chat_completion(
+                    async_ten_env, **args
+                )
                 cmd_result = CmdResult.create(StatusCode.OK, cmd)
                 cmd_result.set_property_from_json("response", response)
                 await async_ten_env.return_result(cmd_result)
@@ -109,7 +119,9 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
                     CmdResult.create(StatusCode.ERROR, cmd)
                 )
         else:
-            await async_ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
+            await async_ten_env.return_result(
+                CmdResult.create(StatusCode.OK, cmd)
+            )
 
     async def queue_input_item(
         self, prepend: bool = False, **kargs: LLMDataCompletionArgs
@@ -142,7 +154,8 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
             )
         except Exception as err:
             async_ten_env.log_warn(
-                f"send sentence [{sentence}] failed, err: {err}")
+                f"send sentence [{sentence}] failed, err: {err}"
+            )
 
     @abstractmethod
     async def on_call_chat_completion(
@@ -181,4 +194,5 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
                 async_ten_env.log_info(f"Task cancelled: {args}")
             except Exception:
                 async_ten_env.log_error(
-                    f"Task failed: {args}, err: {traceback.format_exc()}")
+                    f"Task failed: {args}, err: {traceback.format_exc()}"
+                )

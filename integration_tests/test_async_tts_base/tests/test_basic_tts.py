@@ -5,7 +5,16 @@
 # Refer to the "LICENSE" file in the root directory for more information.
 #
 
-from ten_runtime import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode, Data, AudioFrame, AudioFrameDataFmt
+from ten_runtime import (
+    AsyncExtensionTester,
+    AsyncTenEnvTester,
+    Cmd,
+    CmdResult,
+    StatusCode,
+    Data,
+    AudioFrame,
+    AudioFrameDataFmt,
+)
 
 import pytest
 import asyncio
@@ -37,8 +46,10 @@ class ExtensionTesterBasicTextToSpeech(AsyncExtensionTester):
         assert audio_frame.get_number_of_channels() == 1
         assert audio_frame.get_data_fmt() == AudioFrameDataFmt.INTERLEAVE
         assert audio_frame.get_samples_per_channel() > 0
-        assert len(audio_frame.get_buf()
-                   ) == audio_frame.get_samples_per_channel() * 2
+        assert (
+            len(audio_frame.get_buf())
+            == audio_frame.get_samples_per_channel() * 2
+        )
 
         self.received_frames += 1
         if self.received_frames == 3:
@@ -46,30 +57,27 @@ class ExtensionTesterBasicTextToSpeech(AsyncExtensionTester):
 
 
 def test_basic_text_to_speech_16k():
-    property_json = {
-        "sample_rate": 16000
-    }
+    property_json = {"sample_rate": 16000}
     tester = ExtensionTesterBasicTextToSpeech(16000)
     tester.set_test_mode_single(
-        "test_async_tts_base", json.dumps(property_json))
+        "test_async_tts_base", json.dumps(property_json)
+    )
     tester.run()
 
 
 def test_basic_text_to_speech_32k():
-    property_json = {
-        "sample_rate": 32000
-    }
+    property_json = {"sample_rate": 32000}
     tester = ExtensionTesterBasicTextToSpeech(32000)
     tester.set_test_mode_single(
-        "test_async_tts_base", json.dumps(property_json))
+        "test_async_tts_base", json.dumps(property_json)
+    )
     tester.run()
 
 
 def test_basic_text_to_speech_48k():
-    property_json = {
-        "sample_rate": 48000
-    }
+    property_json = {"sample_rate": 48000}
     tester = ExtensionTesterBasicTextToSpeech(48000)
     tester.set_test_mode_single(
-        "test_async_tts_base", json.dumps(property_json))
+        "test_async_tts_base", json.dumps(property_json)
+    )
     tester.run()

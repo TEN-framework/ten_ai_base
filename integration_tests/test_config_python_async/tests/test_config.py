@@ -5,7 +5,13 @@
 # Refer to the "LICENSE" file in the root directory for more information.
 #
 
-from ten_runtime import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode
+from ten_runtime import (
+    AsyncExtensionTester,
+    AsyncTenEnvTester,
+    Cmd,
+    CmdResult,
+    StatusCode,
+)
 
 import pytest
 import asyncio
@@ -20,7 +26,7 @@ def sample_property():
         "c_str": "abc",
         "c_float": 1.5,
         "c_bool": True,
-        "c_str_enum": "example_1"
+        "c_str_enum": "example_1",
     }
 
 
@@ -29,7 +35,9 @@ class ExtensionTesterBasicTypesTestConfig(AsyncExtensionTester):
 
         cmd_name = cmd.get_name()
         if cmd_name != "test_cmd":
-            await ten_env_tester.return_result(CmdResult.create(StatusCode.OK, cmd))
+            await ten_env_tester.return_result(
+                CmdResult.create(StatusCode.OK, cmd)
+            )
             return
 
         cmd_prop, err = cmd.get_property_to_json("")
@@ -52,5 +60,6 @@ class ExtensionTesterBasicTypesTestConfig(AsyncExtensionTester):
 def test_config_sync(sample_property):
     tester = ExtensionTesterBasicTypesTestConfig()
     tester.set_test_mode_single(
-        "test_config_python_async", json.dumps(sample_property))
+        "test_config_python_async", json.dumps(sample_property)
+    )
     tester.run()

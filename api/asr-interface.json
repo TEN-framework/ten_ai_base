@@ -17,7 +17,7 @@
     ],
     "data_in": [
         {
-            "name": "drain",
+            "name": "finalize",
             "property": {
                 "id": {
                     "type": "string"
@@ -94,7 +94,7 @@
             ]
         },
         {
-            "name": "on_drain_end",
+            "name": "asr_finalize_end",
             "property": {
                 "id": {
                     "type": "string"
@@ -116,7 +116,7 @@
             ]
         },
         {
-            "name": "on_asr_error",
+            "name": "error",
             "property": {
                 "id": {
                     "type": "string"

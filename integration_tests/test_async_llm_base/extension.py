@@ -5,7 +5,11 @@
 #
 from ten_runtime import AsyncTenEnv
 from ten_ai_base import (
-    AsyncLLMBaseExtension, LLMCallCompletionArgs, LLMDataCompletionArgs, LLMToolMetadata, BaseConfig
+    AsyncLLMBaseExtension,
+    LLMCallCompletionArgs,
+    LLMDataCompletionArgs,
+    LLMToolMetadata,
+    BaseConfig,
 )
 from dataclasses import dataclass
 
@@ -33,17 +37,23 @@ class TestAsyncLLMBaseExtension(AsyncLLMBaseExtension):
         """Implement this method to stop and destruct your resources."""
         ten_env.log_debug("TODO: on_stop")
 
-    async def on_call_chat_completion(self, ten_env: AsyncTenEnv, **kargs: LLMCallCompletionArgs) -> any:
+    async def on_call_chat_completion(
+        self, ten_env: AsyncTenEnv, **kargs: LLMCallCompletionArgs
+    ) -> any:
         """Called when a chat completion is requested by cmd call. Implement this method to process the chat completion."""
         ten_env.log_debug("TODO: on_call_chat_completion")
 
-    async def on_data_chat_completion(self, ten_env: AsyncTenEnv, **kargs: LLMDataCompletionArgs) -> None:
+    async def on_data_chat_completion(
+        self, ten_env: AsyncTenEnv, **kargs: LLMDataCompletionArgs
+    ) -> None:
         """
         Called when a chat completion is requested by data input. Implement this method to process the chat completion.
         Note that this method is stream-based, and it should consider supporting local context caching.
         """
         ten_env.log_debug("TODO: on_data_chat_completion")
 
-    async def on_tools_update(self, ten_env: AsyncTenEnv, tool: LLMToolMetadata) -> None:
+    async def on_tools_update(
+        self, ten_env: AsyncTenEnv, tool: LLMToolMetadata
+    ) -> None:
         """Called when a new tool is registered. Implement this method to process the new tool."""
         ten_env.log_debug("TODO: on_tools_update")

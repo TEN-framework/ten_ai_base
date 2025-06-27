@@ -8,7 +8,10 @@ from ten_runtime import (
     AsyncTenEnv,
 )
 from ten_ai_base import (
-    AsyncLLMToolBaseExtension, LLMToolMetadata, LLMToolResult, BaseConfig
+    AsyncLLMToolBaseExtension,
+    LLMToolMetadata,
+    LLMToolResult,
+    BaseConfig,
 )
 from dataclasses import dataclass
 
@@ -40,5 +43,7 @@ class TestAsyncLLMToolExtension(AsyncLLMToolBaseExtension):
         ten_env.log_debug("TODO: get_tool_metadata")
         return []
 
-    async def run_tool(self, ten_env: AsyncTenEnv, name: str, args: dict) -> LLMToolResult:
+    async def run_tool(
+        self, ten_env: AsyncTenEnv, name: str, args: dict
+    ) -> LLMToolResult:
         ten_env.log_debug(f"TODO: run_tool {name} {args}")

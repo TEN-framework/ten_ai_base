@@ -30,7 +30,8 @@ class AsyncLLMToolBaseExtension(AsyncExtension, ABC):
             async_ten_env.log_info(f"tool: {tool}")
             c: Cmd = Cmd.create(CMD_TOOL_REGISTER)
             c.set_property_from_json(
-                CMD_PROPERTY_TOOL, json.dumps(tool.model_dump()))
+                CMD_PROPERTY_TOOL, json.dumps(tool.model_dump())
+            )
             async_ten_env.log_info(f"begin tool register, {tool}")
             await async_ten_env.send_cmd(c)
             async_ten_env.log_info(f"tool registered, {tool}")
@@ -47,7 +48,9 @@ class AsyncLLMToolBaseExtension(AsyncExtension, ABC):
                 tool_name, err = cmd.get_property_string("name")
                 if err:
                     raise RuntimeError(f"Failed to get tool name: {err}")
-                tool_args, err = json.loads(cmd.get_property_to_json("arguments"))
+                tool_args, err = json.loads(
+                    cmd.get_property_to_json("arguments")
+                )
                 if err:
                     raise RuntimeError(f"Failed to get tool arguments: {err}")
                 async_ten_env.log_debug(
@@ -71,12 +74,15 @@ class AsyncLLMToolBaseExtension(AsyncExtension, ABC):
                 async_ten_env.log_info(f"tool result done, {result}")
             except Exception:
                 async_ten_env.log_warn(
-                    f"on_cmd failed: {traceback.format_exc()}")
+                    f"on_cmd failed: {traceback.format_exc()}"
+                )
                 await async_ten_env.return_result(
                     CmdResult.create(StatusCode.ERROR, cmd)
                 )
         else:
-            await async_ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
+            await async_ten_env.return_result(
+                CmdResult.create(StatusCode.OK, cmd)
+            )
 
     async def on_data(self, async_ten_env: AsyncTenEnv, data: Data) -> None:
         data_name = data.get_name()
@@ -87,14 +93,16 @@ class AsyncLLMToolBaseExtension(AsyncExtension, ABC):
     ) -> None:
         audio_frame_name = audio_frame.get_name()
         async_ten_env.log_debug(
-            "on_audio_frame name {}".format(audio_frame_name))
+            "on_audio_frame name {}".format(audio_frame_name)
+        )
 
     async def on_video_frame(
         self, async_ten_env: AsyncTenEnv, video_frame: VideoFrame
     ) -> None:
         video_frame_name = video_frame.get_name()
         async_ten_env.log_debug(
-            "on_video_frame name {}".format(video_frame_name))
+            "on_video_frame name {}".format(video_frame_name)
+        )
 
     @abstractmethod
     def get_tool_metadata(self, ten_env: TenEnv) -> list[LLMToolMetadata]:

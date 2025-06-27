@@ -1,11 +1,12 @@
 from abc import abstractmethod
 
-from .types import VendorError
+from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigModeKeep
+
+from .message import ErrorMessage, ErrorMessageVendorInfo
 from .transcription import UserTranscription
 from ten_runtime import (
     AsyncExtension,
     AsyncTenEnv,
-    AsyncTenEnvTester,
     Cmd,
     Data,
     AudioFrame,
@@ -14,6 +15,7 @@ from ten_runtime import (
 )
 import asyncio
 import json
+
 
 class AsyncASRBaseExtension(AsyncExtension):
     def __init__(self, name: str):
@@ -32,7 +34,9 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         self.loop.create_task(self.start_connection())
 
-    async def on_audio_frame(self, ten_env: AsyncTenEnv, frame: AudioFrame) -> None:
+    async def on_audio_frame(
+        self, ten_env: AsyncTenEnv, frame: AudioFrame
+    ) -> None:
         frame_buf = frame.get_buf()
         if not frame_buf:
             ten_env.log_warn("send_frame: empty pcm_frame detected.")
@@ -48,10 +52,19 @@ class AsyncASRBaseExtension(AsyncExtension):
             if "session_id" in metadata_json:
                 self.session_id = metadata_json["session_id"]
 
-        success = await self.send_audio(frame)
+        success = await self.send_audio(frame, self.session_id)
 
         if success:
             self.sent_buffer_length += len(frame_buf)
+
+    async def on_data(self, ten_env: AsyncTenEnv, data: Data) -> None:
+        data_name = data.get_name()
+        ten_env.log_debug(f"on_data name: {data_name}")
+
+        if data_name == "finalize":
+            if not self.is_connected():
+                ten_env.log_warn("finalize: service not connected.")
+            await self.finalize(self.session_id)
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_stop")
@@ -71,24 +84,32 @@ class AsyncASRBaseExtension(AsyncExtension):
     @abstractmethod
     async def start_connection(self) -> None:
         """Start the connection to the ASR service."""
-        raise NotImplementedError("This method should be implemented in subclasses.")
+        raise NotImplementedError(
+            "This method should be implemented in subclasses."
+        )
 
     @abstractmethod
     def is_connected(self) -> bool:
         """Check if the ASR service is connected."""
-        raise NotImplementedError("This method should be implemented in subclasses.")
+        raise NotImplementedError(
+            "This method should be implemented in subclasses."
+        )
 
     @abstractmethod
     async def stop_connection(self) -> None:
         """Stop the connection to the ASR service."""
-        raise NotImplementedError("This method should be implemented in subclasses.")
+        raise NotImplementedError(
+            "This method should be implemented in subclasses."
+        )
 
     @abstractmethod
     def input_audio_sample_rate(self) -> int:
         """
         Get the input audio sample rate in Hz.
         """
-        raise NotImplementedError("This method should be implemented in subclasses.")
+        raise NotImplementedError(
+            "This method should be implemented in subclasses."
+        )
 
     def input_audio_channels(self) -> int:
         """
@@ -104,21 +125,29 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         return 2
 
+    def buffer_strategy(self) -> ASRBufferConfig:
+        """
+        Get the buffer strategy for audio frames when not connected
+        """
+        return ASRBufferConfigModeDiscard()
+
     @abstractmethod
-    async def send_audio(
-        self, frame: AudioFrame
-    ) -> bool:
+    async def send_audio(self, frame: AudioFrame, session_id: str | None) -> bool:
         """
         Send an audio frame to the ASR service, returning True if successful.
         """
-        raise NotImplementedError("This method should be implemented in subclasses.")
+        raise NotImplementedError(
+            "This method should be implemented in subclasses."
+        )
 
     @abstractmethod
-    async def drain(self) -> None:
+    async def finalize(self, session_id: str | None) -> None:
         """
         Drain the ASR service to ensure all audio frames are processed.
         """
-        raise NotImplementedError("This method should be implemented in subclasses.")
+        raise NotImplementedError(
+            "This method should be implemented in subclasses."
+        )
 
     async def send_asr_transcription(
         self, transcription: UserTranscription
@@ -133,59 +162,78 @@ class AsyncASRBaseExtension(AsyncExtension):
             self.sent_buffer_length,
             self.input_audio_sample_rate(),
             self.input_audio_channels(),
-            self.input_audio_sample_width()
+            self.input_audio_sample_width(),
         )
 
-
-        stable_data.set_property_from_json(None, json.dumps({
-            "id": "user.transcription",
-            "text": transcription.text,
-            "final": transcription.final,
-            "start_ms": sent_duration + transcription.start_ms,
-            "duration_ms":  transcription.duration_ms,
-            "language": transcription.language,
-            "words": model_json.get("words", []),
-            "metadata": {
-                "session_id": self.session_id
-            }
-        }))
+        stable_data.set_property_from_json(
+            None,
+            json.dumps(
+                {
+                    "id": "user.transcription",
+                    "text": transcription.text,
+                    "final": transcription.final,
+                    "start_ms": sent_duration + transcription.start_ms,
+                    "duration_ms": transcription.duration_ms,
+                    "language": transcription.language,
+                    "words": model_json.get("words", []),
+                    "metadata": {"session_id": self.session_id},
+                }
+            ),
+        )
 
         await self.ten_env.send_data(stable_data)
 
-    async def send_asr_error(self, code: int, message: str, error: VendorError) -> None:
+    async def send_asr_error(
+        self, error: ErrorMessage, vendor_info: ErrorMessageVendorInfo
+    ) -> None:
         """
         Send an error message related to ASR processing.
         """
-        error_data = Data.create("asr_error")
-        error_data.set_property_from_json(None, json.dumps({
-            "id": "user.transcription",
-            "code": code,
-            "message": message,
-            "vendor_info": error.model_dump(),
-            "metadata": {
-                "session_id": self.session_id
-            }
-        }))
+        error_data = Data.create("error")
+        error_data.set_property_from_json(
+            None,
+            json.dumps(
+                {
+                    "id": "user.transcription",
+                    "code": error.code,
+                    "message": error.message,
+                    "vendor_info": {
+                        "vendor": vendor_info.vendor,
+                        "code": vendor_info.code,
+                        "message": vendor_info.message,
+                    },
+                    "metadata": {"session_id": self.session_id},
+                }
+            ),
+        )
 
         await self.ten_env.send_data(error_data)
 
-
-    async def send_asr_drain_end(self, latency_ms: int) -> None:
+    async def send_asr_finalize_end(self, latency_ms: int) -> None:
         """
         Send a signal that the ASR service has finished processing all audio frames.
         """
-        drain_data = Data.create("asr_drain_end")
-        drain_data.set_property_from_json(None, json.dumps({
-            "id": "user.transcription",
-            "latency_ms": latency_ms,
-            "metadata": {
-                "session_id": self.session_id
-            }
-        }))
+        drain_data = Data.create("asr_finalize_end")
+        drain_data.set_property_from_json(
+            None,
+            json.dumps(
+                {
+                    "id": "user.transcription",
+                    "latency_ms": latency_ms,
+                    "metadata": {"session_id": self.session_id},
+                }
+            ),
+        )
 
         await self.ten_env.send_data(drain_data)
 
-    def calculate_audio_duration(self, bytes_length: int, sample_rate: int, channels: int = 1, sample_width: int = 2) -> float:
+    def calculate_audio_duration(
+        self,
+        bytes_length: int,
+        sample_rate: int,
+        channels: int = 1,
+        sample_width: int = 2,
+    ) -> float:
         """
         Calculate audio duration in seconds.
 

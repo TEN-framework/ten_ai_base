@@ -4,23 +4,23 @@ from enum import IntEnum
 
 class TurnStatus(IntEnum):
     IN_PROGRESS = 0
-    END = 1             # End gracefully
-    INTERRUPTED = 2     # End by interrupt
+    END = 1  # End gracefully
+    INTERRUPTED = 2  # End by interrupt
 
 
 class Word(BaseModel):
     word: str = ""
-    start_ms: int = 0    # start time of the word, milliseconds since epoch
+    start_ms: int = 0  # start time of the word, milliseconds since epoch
     duration_ms: int = 0  # duration of the word, in milliseconds
     stable: bool = True  # whether 'word' won't change anymore
 
 
 class UserTranscription(BaseModel):
     object: str = "user.transcription"  # [required] name of the object
-    text: str = ""      # [required] text for display
+    text: str = ""  # [required] text for display
     final: bool = True  # whether 'text' won't change anymore
-    start_ms: int = 0   # start time of the text, milliseconds since epoch
-    duration_ms: int = 0    # duration of the text, in milliseconds
+    start_ms: int = 0  # start time of the text, milliseconds since epoch
+    duration_ms: int = 0  # duration of the text, in milliseconds
     language: str = ""  # IETF BCP 47(RFC 4646), such as 'en-US' or 'zh-CN'
 
     turn_id: int = 0
@@ -35,11 +35,12 @@ class UserTranscription(BaseModel):
 
     metadata: dict | None = None  # additional metadata for the transcription
 
+
 class AssistantTranscription(BaseModel):
     object: str = "assistant.transcription"  # [required] name of the object
-    text: str = ""      # [required] text for display
-    start_ms: int = 0   # start time of the text, milliseconds since epoch
-    duration_ms: int = 0    # duration of the text, in milliseconds
+    text: str = ""  # [required] text for display
+    start_ms: int = 0  # start time of the text, milliseconds since epoch
+    duration_ms: int = 0  # duration of the text, in milliseconds
     language: str = ""  # IETF BCP 47(RFC 4646), such as 'en-US' or 'zh-CN'
 
     quiet: bool = False  # expect to pronounce or not

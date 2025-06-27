@@ -5,7 +5,16 @@
 # Refer to the "LICENSE" file in the root directory for more information.
 #
 
-from ten_runtime import AsyncExtensionTester, AsyncTenEnvTester, Cmd, CmdResult, StatusCode, Data, AudioFrame, AudioFrameDataFmt
+from ten_runtime import (
+    AsyncExtensionTester,
+    AsyncTenEnvTester,
+    Cmd,
+    CmdResult,
+    StatusCode,
+    Data,
+    AudioFrame,
+    AudioFrameDataFmt,
+)
 
 import pytest
 import asyncio
@@ -39,8 +48,10 @@ class ExtensionTesterFlush(AsyncExtensionTester):
         assert audio_frame.get_number_of_channels() == 1
         assert audio_frame.get_data_fmt() == AudioFrameDataFmt.INTERLEAVE
         assert audio_frame.get_samples_per_channel() > 0
-        assert len(audio_frame.get_buf()
-                   ) == audio_frame.get_samples_per_channel() * 2
+        assert (
+            len(audio_frame.get_buf())
+            == audio_frame.get_samples_per_channel() * 2
+        )
 
         self.received_frames += 1
         # should not receive any new audio frame after flush

@@ -7,7 +7,9 @@ from ten_runtime import (
     AsyncTenEnv,
 )
 from ten_ai_base import (
-    AsyncTTSBaseExtension, BaseConfig, AssistantTranscription
+    AsyncTTSBaseExtension,
+    BaseConfig,
+    AssistantTranscription,
 )
 from dataclasses import dataclass
 import asyncio
@@ -37,7 +39,9 @@ class TestAsyncTTSExtension(AsyncTTSBaseExtension):
         """Implement this method to stop and destruct your resources."""
         ten_env.log_debug("TODO: on_stop")
 
-    async def on_request_tts(self, ten_env: AsyncTenEnv, t: AssistantTranscription) -> None:
+    async def on_request_tts(
+        self, ten_env: AsyncTenEnv, t: AssistantTranscription
+    ) -> None:
         ten_env.log_debug(f"on_request_tts, text [{t.text}]")
 
         # mock text-to-speech
@@ -45,7 +49,10 @@ class TestAsyncTTSExtension(AsyncTTSBaseExtension):
         for b in audio_data_bytes:
             audio_data = bytearray(b)
             await self.send_audio_out(
-                ten_env=ten_env, audio_data=audio_data, sample_rate=self.config.sample_rate)
+                ten_env=ten_env,
+                audio_data=audio_data,
+                sample_rate=self.config.sample_rate,
+            )
             await asyncio.sleep(0.1)
 
     async def on_cancel_tts(self, ten_env: AsyncTenEnv) -> None:

@@ -214,13 +214,23 @@ class AsyncASRBaseExtension(AsyncExtension):
         if transcription.final:
             self.uuid = self.get_uuid()  # Reset UUID for the next final turn
 
+    
     async def send_asr_error(
-        self, error: ErrorMessage, vendor_info: ErrorMessageVendorInfo
+        self, error: ErrorMessage, vendor_info: ErrorMessageVendorInfo | None = None
     ) -> None:
         """
         Send an error message related to ASR processing.
         """
         error_data = Data.create("error")
+
+        vendorInfo = None
+        if vendor_info:
+            vendorInfo = {
+                "vendor": vendor_info.vendor,
+                "code": vendor_info.code,
+                "message": vendor_info.message,
+            }
+
         error_data.set_property_from_json(
             None,
             json.dumps(
@@ -228,11 +238,7 @@ class AsyncASRBaseExtension(AsyncExtension):
                     "id": "user.transcription",
                     "code": error.code,
                     "message": error.message,
-                    "vendor_info": {
-                        "vendor": vendor_info.vendor,
-                        "code": vendor_info.code,
-                        "message": vendor_info.message,
-                    },
+                    "vendor_info": vendorInfo,
                     "metadata": {"session_id": self.session_id},
                 }
             ),

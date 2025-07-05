@@ -38,9 +38,6 @@
                     "properties": {
                         "session_id": {
                             "type": "string"
-                        },
-                        "turn_id": {
-                            "type": "int64"
                         }
                     }
                 }

@@ -1,9 +1,10 @@
 from abc import abstractmethod
+from typing import Any
 import uuid
 
 from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigModeKeep
 
-from .message import ErrorMessage, ErrorMessageVendorInfo
+from .message import ErrorMessage, ErrorMessageVendorInfo, ModuleError, ModuleErrorVendorInfo, ModuleMetrics
 from .transcription import UserTranscription
 from ten_runtime import (
     AsyncExtension,
@@ -16,7 +17,6 @@ from ten_runtime import (
 )
 import asyncio
 import json
-
 
 class AsyncASRBaseExtension(AsyncExtension):
     def __init__(self, name: str):
@@ -216,7 +216,7 @@ class AsyncASRBaseExtension(AsyncExtension):
 
     
     async def send_asr_error(
-        self, error: ErrorMessage, vendor_info: ErrorMessageVendorInfo | None = None
+        self, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None
     ) -> None:
         """
         Send an error message related to ASR processing.
@@ -235,7 +235,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             None,
             json.dumps(
                 {
-                    "id": "user.transcription",
+                    "id": self.uuid,
                     "code": error.code,
                     "message": error.message,
                     "vendor_info": vendorInfo,
@@ -246,7 +246,7 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         await self.ten_env.send_data(error_data)
 
-    async def send_asr_finalize_end(self, latency_ms: int) -> None:
+    async def send_asr_finalize_end(self) -> None:
         """
         Send a signal that the ASR service has finished processing all audio frames.
         """
@@ -255,14 +255,37 @@ class AsyncASRBaseExtension(AsyncExtension):
             None,
             json.dumps(
                 {
-                    "id": "user.transcription",
-                    "latency_ms": latency_ms,
+                    "id": self.uuid,
                     "metadata": {"session_id": self.session_id},
                 }
             ),
         )
 
         await self.ten_env.send_data(drain_data)
+
+    async def send_asr_metrics(
+        self,
+        metrics: ModuleMetrics
+    ) -> None:
+        """
+        Send metrics related to the ASR module.
+        """
+        metrics_data = Data.create("metrics")
+
+        metrics_data.set_property_from_json(
+            None,
+            json.dumps(
+                {
+                    "id": self.uuid,
+                    "module": metrics.module,
+                    "vendor": metrics.vendor,
+                    "metrics": metrics.metrics,
+                    "metadata": {"session_id": self.session_id},
+                }
+            ),
+        )
+
+        await self.ten_env.send_data(metrics_data)
 
     def calculate_audio_duration(
         self,

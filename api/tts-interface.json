@@ -1,31 +1,35 @@
 {
     "property": {
-        "params": {
-            "type": "object",
-            "properties": {}
-        },
-        "dump": {
-            "type": "bool"
-        },
-        "dump_path": {
-            "type": "string"
-        },
-        "enable_words": {
-            "type": "bool"
+        "properties": {
+            "params": {
+                "type": "object",
+                "properties": {}
+            },
+            "dump": {
+                "type": "bool"
+            },
+            "dump_path": {
+                "type": "string"
+            },
+            "enable_words": {
+                "type": "bool"
+            }
         }
     },
     "audio_frame_out": [
         {
             "name": "pcm_frame",
             "property": {
-                "metadata": {
-                    "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string"
-                        },
-                        "turn_id": {
-                            "type": "int64"
+                "properties": {
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
+                            }
                         }
                     }
                 }
@@ -36,23 +40,25 @@
         {
             "name": "tts_text_input",
             "property": {
-                "request_id": {
-                    "type": "string"
-                },
-                "text": {
-                    "type": "string"
-                },
-                "text_input_end": {
-                    "type": "bool"
-                },
-                "metadata": {
-                    "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string"
-                        },
-                        "turn_id": {
-                            "type": "int64"
+                "properties": {
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "text": {
+                        "type": "string"
+                    },
+                    "text_input_end": {
+                        "type": "bool"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
+                            }
                         }
                     }
                 }
@@ -65,14 +71,16 @@
         {
             "name": "flush",
             "property": {
-                "id": {
-                    "type": "string"
-                },
-                "metadata": {
-                    "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string"
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -83,51 +91,53 @@
         {
             "name": "tts_text_result",
             "property": {
-                "request_id": {
-                    "type": "string"
-                },
-                "text": {
-                    "type": "string"
-                },
-                "start_ms": {
-                    "type": "int64"
-                },
-                "duration_ms": {
-                    "type": "int64"
-                },
-                "words": {
-                    "type": "array",
-                    "items": {
+                "properties": {
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "text": {
+                        "type": "string"
+                    },
+                    "start_ms": {
+                        "type": "int64"
+                    },
+                    "duration_ms": {
+                        "type": "int64"
+                    },
+                    "words": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "word": {
+                                    "type": "string"
+                                },
+                                "start_ms": {
+                                    "type": "int64"
+                                },
+                                "duration_ms": {
+                                    "type": "int64"
+                                }
+                            },
+                            "required": [
+                                "word",
+                                "start_ms",
+                                "duration_ms"
+                            ]
+                        }
+                    },
+                    "text_result_end": {
+                        "type": "bool"
+                    },
+                    "metadata": {
                         "type": "object",
                         "properties": {
-                            "word": {
+                            "session_id": {
                                 "type": "string"
                             },
-                            "start_ms": {
-                                "type": "int64"
-                            },
-                            "duration_ms": {
+                            "turn_id": {
                                 "type": "int64"
                             }
-                        },
-                        "required": [
-                            "word",
-                            "start_ms",
-                            "duration_ms"
-                        ]
-                    }
-                },
-                "text_result_end": {
-                    "type": "bool"
-                },
-                "metadata": {
-                    "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string"
-                        },
-                        "turn_id": {
-                            "type": "int64"
                         }
                     }
                 }
@@ -143,14 +153,16 @@
         {
             "name": "flush",
             "property": {
-                "id": {
-                    "type": "string"
-                },
-                "metadata": {
-                    "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string"
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -159,40 +171,42 @@
         {
             "name": "error",
             "property": {
-                "id": {
-                    "type": "string"
-                },
-                "module": {
-                    "type": "string"
-                },
-                "code": {
-                    "type": "int64"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "vendor_info": {
-                    "type": "object",
-                    "properties": {
-                        "vendor": {
-                            "type": "string"
-                        },
-                        "code": {
-                            "type": "string"
-                        },
-                        "message": {
-                            "type": "string"
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "module": {
+                        "type": "string"
+                    },
+                    "code": {
+                        "type": "int64"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "vendor_info": {
+                        "type": "object",
+                        "properties": {
+                            "vendor": {
+                                "type": "string"
+                            },
+                            "code": {
+                                "type": "string"
+                            },
+                            "message": {
+                                "type": "string"
+                            }
                         }
-                    }
-                },
-                "metadata": {
-                    "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string"
-                        },
-                        "turn_id": {
-                            "type": "int64"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
+                            }
                         }
                     }
                 }
@@ -206,27 +220,29 @@
         {
             "name": "metrics",
             "property": {
-                "id": {
-                    "type": "string"
-                },
-                "module": {
-                    "type": "string"
-                },
-                "vendor": {
-                    "type": "string"
-                },
-                "metrics": {
-                    "type": "object",
-                    "properties": {}
-                },
-                "metadata": {
-                    "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string"
-                        },
-                        "turn_id": {
-                            "type": "int64"
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "module": {
+                        "type": "string"
+                    },
+                    "vendor": {
+                        "type": "string"
+                    },
+                    "metrics": {
+                        "type": "object",
+                        "properties": {}
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
+                            }
                         }
                     }
                 }

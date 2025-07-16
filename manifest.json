@@ -6,6 +6,7 @@
     "include": [
       "manifest.json",
       "interface/**",
+      "api/**",
       "requirements.txt"
     ]
   },

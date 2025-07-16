@@ -34,30 +34,15 @@
     ],
     "data_in": [
         {
-            "name": "tts_request",
+            "name": "tts_text_input",
             "property": {
-                "id": {
+                "request_id": {
                     "type": "string"
                 },
                 "text": {
                     "type": "string"
                 },
-                "language": {
-                    "type": "string"
-                },
-                "turn_id": {
-                    "type": "int64"
-                },
-                "turn_seq_id": {
-                    "type": "int64"
-                },
-                "turn_end": {
-                    "type": "bool"
-                },
-                "interrupted": {
-                    "type": "bool"
-                },
-                "skip_synthesis": {
+                "text_input_end": {
                     "type": "bool"
                 },
                 "metadata": {
@@ -65,16 +50,16 @@
                     "properties": {
                         "session_id": {
                             "type": "string"
+                        },
+                        "turn_id": {
+                            "type": "int64"
                         }
                     }
                 }
             },
             "required": [
-                "text",
-                "turn_id",
-                "turn_seq_id",
-                "turn_end",
-                "interrupted"
+                "request_id",
+                "text"
             ]
         },
         {
@@ -96,9 +81,9 @@
     ],
     "data_out": [
         {
-            "name": "tts_result",
+            "name": "tts_text_result",
             "property": {
-                "id": {
+                "request_id": {
                     "type": "string"
                 },
                 "text": {
@@ -109,9 +94,6 @@
                 },
                 "duration_ms": {
                     "type": "int64"
-                },
-                "language": {
-                    "type": "string"
                 },
                 "words": {
                     "type": "array",
@@ -126,26 +108,16 @@
                             },
                             "duration_ms": {
                                 "type": "int64"
-                            },
-                            "stable": {
-                                "type": "bool"
                             }
-                        }
+                        },
+                        "required": [
+                            "word",
+                            "start_ms",
+                            "duration_ms"
+                        ]
                     }
                 },
-                "turn_id": {
-                    "type": "int64"
-                },
-                "turn_end": {
-                    "type": "bool"
-                },
-                "result_seq_id": {
-                    "type": "int64"
-                },
-                "interrupted": {
-                    "type": "bool"
-                },
-                "skip_synthesis": {
+                "text_result_end": {
                     "type": "bool"
                 },
                 "metadata": {
@@ -153,18 +125,19 @@
                     "properties": {
                         "session_id": {
                             "type": "string"
+                        },
+                        "turn_id": {
+                            "type": "int64"
                         }
                     }
                 }
             },
             "required": [
+                "request_id",
                 "text",
                 "start_ms",
                 "duration_ms",
-                "turn_id",
-                "turn_end",
-                "result_seq_id",
-                "interrupted"
+                "words"
             ]
         },
         {
@@ -172,50 +145,6 @@
             "property": {
                 "id": {
                     "type": "string"
-                },
-                "metadata": {
-                    "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "name": "tts_speaking_start",
-            "property": {
-                "turn_id": {
-                    "type": "int64"
-                },
-                "interruptable": {
-                    "type": "bool"
-                },
-                "metadata": {
-                    "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "name": "tts_speaking_end",
-            "property": {
-                "turn_id": {
-                    "type": "int64"
-                },
-                "interrupted": {
-                    "type": "bool"
-                },
-                "audio_duration_ms": {
-                    "type": "int64"
-                },
-                "synthesis_duration_ms": {
-                    "type": "int64"
                 },
                 "metadata": {
                     "type": "object",
@@ -242,7 +171,7 @@
                 "message": {
                     "type": "string"
                 },
-                "vendor_error": {
+                "vendor_info": {
                     "type": "object",
                     "properties": {
                         "vendor": {

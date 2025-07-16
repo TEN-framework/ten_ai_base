@@ -135,7 +135,7 @@
                 "message": {
                     "type": "string"
                 },
-                "vendor_error": {
+                "vendor_info": {
                     "type": "object",
                     "properties": {
                         "vendor": {

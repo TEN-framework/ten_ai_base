@@ -114,6 +114,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def _process_tts_stream(self, t: TTSTextInput) -> None:
         try:
+            self.ten_env.log_info(f"Processing TTS request: {t.text}")
             async for chunk in self.request_tts(t):
                 await self._send_audio_out(chunk)
         except asyncio.CancelledError:
@@ -146,10 +147,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self, audio_data: bytes
     ) -> None:
         """End sending audio out."""
-        sample_rate = self.synthesize_audio_sample_rate()
-        bytes_per_sample = self.synthesize_audio_sample_width()
-        number_of_channels = self.synthesize_audio_channels()
         try:
+            sample_rate = self.synthesize_audio_sample_rate()
+            bytes_per_sample = self.synthesize_audio_sample_width()
+            number_of_channels = self.synthesize_audio_channels()
             # Combine leftover bytes with new audio data
             combined_data = self.leftover_bytes + audio_data
 
@@ -228,7 +229,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
 
     @abstractmethod
-    def request_tts(
+    async def request_tts(
         self, t: TTSTextInput
     ) -> AsyncGenerator[bytes, None]:
         """

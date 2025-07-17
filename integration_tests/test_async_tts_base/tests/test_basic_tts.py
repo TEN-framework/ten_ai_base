@@ -28,14 +28,14 @@ class ExtensionTesterBasicTextToSpeech(AsyncExtensionTester):
         self.target_sample_rate = sample_rate
         self.received_frames = 0
 
-    async def on_start(self, ten_env_tester: AsyncTenEnvTester) -> None:
+    async def on_start(self, ten_env: AsyncTenEnvTester) -> None:
         await asyncio.sleep(0.1)
         text_data = Data.create("text_data")
         text_data.set_property_string("text", "How are you today?")
-        await ten_env_tester.send_data(text_data)
+        await ten_env.send_data(text_data)
 
     async def on_audio_frame(
-        self, ten_env_tester: AsyncTenEnvTester, audio_frame: AudioFrame
+        self, ten_env: AsyncTenEnvTester, audio_frame: AudioFrame
     ) -> None:
         frame_name = audio_frame.get_name()
         if frame_name != "pcm_frame":
@@ -53,7 +53,7 @@ class ExtensionTesterBasicTextToSpeech(AsyncExtensionTester):
 
         self.received_frames += 1
         if self.received_frames == 3:
-            ten_env_tester.stop_test()
+            ten_env.stop_test()
 
 
 def test_basic_text_to_speech_16k():

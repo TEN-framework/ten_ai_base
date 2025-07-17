@@ -28,16 +28,16 @@ class ExtensionTesterFlush(AsyncExtensionTester):
         self.target_sample_rate = sample_rate
         self.received_frames = 0
 
-    async def on_start(self, ten_env_tester: AsyncTenEnvTester) -> None:
+    async def on_start(self, ten_env: AsyncTenEnvTester) -> None:
         text_data = Data.create("text_data")
         text_data.set_property_string("text", "How are you today?")
-        await ten_env_tester.send_data(text_data)
+        await ten_env.send_data(text_data)
 
         flush_cmd = Cmd.create("flush")
-        asyncio.create_task(ten_env_tester.send_cmd(flush_cmd))
+        asyncio.create_task(ten_env.send_cmd(flush_cmd))
 
     async def on_audio_frame(
-        self, ten_env_tester: AsyncTenEnvTester, audio_frame: AudioFrame
+        self, ten_env: AsyncTenEnvTester, audio_frame: AudioFrame
     ) -> None:
         frame_name = audio_frame.get_name()
         if frame_name != "pcm_frame":
@@ -57,16 +57,16 @@ class ExtensionTesterFlush(AsyncExtensionTester):
         # should not receive any new audio frame after flush
         assert self.received_frames < 2
 
-    async def on_cmd(self, ten_env_tester: AsyncTenEnvTester, cmd: Cmd) -> None:
+    async def on_cmd(self, ten_env: AsyncTenEnvTester, cmd: Cmd) -> None:
         cmd_name = cmd.get_name()
-        ten_env_tester.log_debug(f"on_cmd: {cmd_name}")
-        await ten_env_tester.return_result(CmdResult.create(StatusCode.OK, cmd))
+        ten_env.log_debug(f"on_cmd: {cmd_name}")
+        await ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
 
         if cmd_name != "flush":
             return
 
         # received flush cmd
-        ten_env_tester.stop_test()
+        ten_env.stop_test()
 
 
 def test_flush():

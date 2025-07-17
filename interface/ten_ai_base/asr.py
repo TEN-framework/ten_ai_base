@@ -22,7 +22,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         super().__init__(name)
 
         self.stopped = False
-        self.ten_env: AsyncTenEnv = None
+        self.ten_env: AsyncTenEnv = None # type: ignore
         self.loop = None
         self.session_id = None
         self.sent_buffer_length = 0
@@ -38,9 +38,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.loop.create_task(self.start_connection())
 
     async def on_audio_frame(
-        self, ten_env: AsyncTenEnv, frame: AudioFrame
+        self, ten_env: AsyncTenEnv, audio_frame: AudioFrame
     ) -> None:
-        frame_buf = frame.get_buf()
+        frame_buf = audio_frame.get_buf()
         if not frame_buf:
             ten_env.log_warn("send_frame: empty pcm_frame detected.")
             return
@@ -55,13 +55,13 @@ class AsyncASRBaseExtension(AsyncExtension):
                         break
                     discard_frame = await self.buffered_frames.get()
                     self.buffered_frames_size -= len(discard_frame.get_buf())
-                self.buffered_frames.put_nowait(frame)
+                self.buffered_frames.put_nowait(audio_frame)
                 self.buffered_frames_size += len(frame_buf)
             # return anyway if not connected
             return
 
 
-        metadata, _ = frame.get_property_to_json("metadata")
+        metadata, _ = audio_frame.get_property_to_json("metadata")
         if metadata:
             try:
                 metadata_json = json.loads(metadata)
@@ -79,7 +79,7 @@ class AsyncASRBaseExtension(AsyncExtension):
                     break
             self.buffered_frames_size = 0
 
-        success = await self.send_audio(frame, self.session_id)
+        success = await self.send_audio(audio_frame, self.session_id)
 
         if success:
             self.sent_buffer_length += len(frame_buf)
@@ -101,8 +101,8 @@ class AsyncASRBaseExtension(AsyncExtension):
         await self.stop_connection()
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
-        cmd_json = cmd.to_json()
-        ten_env.log_info(f"on_cmd json: {cmd_json}")
+        cmd_name = cmd.get_name()
+        ten_env.log_info(f"on_cmd json: {cmd_name}")
 
         cmd_result = CmdResult.create(StatusCode.OK, cmd)
         cmd_result.set_property_string("detail", "success")

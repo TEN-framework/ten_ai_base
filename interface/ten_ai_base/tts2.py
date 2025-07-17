@@ -111,7 +111,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             self.current_task.cancel()
             self.current_task = None
         self.leftover_bytes = b""
-    
+
     async def _process_tts_stream(self, t: TTSTextInput) -> None:
         try:
             async for chunk in self.request_tts(t):
@@ -230,7 +230,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     @abstractmethod
     def request_tts(
         self, t: TTSTextInput
-    ) -> AsyncGenerator[bytes]:
+    ) -> AsyncGenerator[bytes, None]:
         """
         Called when a new input item is available in the queue. Override this method to implement the TTS request logic.
         Use send_audio_out to send the audio data to the output when the audio data is ready.

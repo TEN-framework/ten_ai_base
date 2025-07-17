@@ -2,11 +2,11 @@ from pydantic import BaseModel
 from enum import Enum, IntEnum
 from typing import Any
 
-class MetadataKey(Enum, str):
+class MetadataKey(str, Enum):
     SESSION_ID = "session_id"
     TURN_ID = "turn_id"
 
-class ModuleType(Enum, str):
+class ModuleType(str, Enum):
     ASR = "asr"
     LLM = "llm"
     TTS = "tts"
@@ -14,14 +14,14 @@ class ModuleType(Enum, str):
     AVATAR = "avatar"
     TURN = "turn"
 
-class ModuleMetricKey(Enum, str):
+class ModuleMetricKey(str, Enum):
     ASR_TTFW = "ttfw"   # time to first word
     ASR_TTLW = "ttlw"   # time to last word
     TTS_TTFB = "ttfb"   # time to first byte
     LLM_TTFT = "ttft"   # time to first token
     LLM_TTFS = "ttfs"   # time to first sentence
 
-class ModuleErrorCode(Enum, str):
+class ModuleErrorCode(str, Enum):
     OK = 0
 
     # After a fatal error occurs, the module will stop all operations.
@@ -29,7 +29,7 @@ class ModuleErrorCode(Enum, str):
 
     # After a non-fatal error occurs, the module itself will continue to retry.
     NON_FATAL_ERROR = 1000
-    
+
 class ModuleErrorVendorInfo(BaseModel):
     vendor: str = ""    # vendor name
     code: str = ""      # vendor's original error code

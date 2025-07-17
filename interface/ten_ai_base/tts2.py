@@ -12,7 +12,7 @@ from typing import AsyncGenerator
 from .helper import AsyncQueue
 from .message import ModuleError, ModuleErrorVendorInfo
 
-from .struct import TTSTextInput, TTSTextResult
+from .struct import TTSMetadata, TTSTextInput, TTSTextResult
 from ten_runtime import (
     AsyncExtension,
     Data,
@@ -24,6 +24,8 @@ from ten_runtime.cmd_result import CmdResult, StatusCode
 
 DATA_TTS_TEXT_INPUT = "tts_text_input"
 DATA_TTS_TEXT_RESULT = "tts_text_result"
+DATA_FLUSH = "flush"
+DATA_FLUSH_RESULT = "flush_result"
 
 
 class AsyncTTS2BaseExtension(AsyncExtension, ABC):
@@ -95,6 +97,33 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
             # Start an asynchronous task for handling tts
             await self.queue.put(t)
+        if data.get_name() == DATA_FLUSH:
+            data_payload, err = data.get_property_to_json("")
+            if err:
+                raise RuntimeError(f"Failed to get data payload: {err}")
+            ten_env.log_debug(
+                f"on_data {data_name}, payload {data_payload}"
+            )
+
+            try:
+                t = TTSMetadata.model_validate_json(data_payload)
+            except Exception as e:
+                ten_env.log_warn(
+                    f"invalid data {data_name} payload, err {e}"
+                )
+                return
+
+            await self._flush_input_items()
+            flush_result = Data.create(DATA_FLUSH_RESULT)
+            flush_result.set_property_from_json(
+                None, json.dumps({
+                    "metadata": {
+                        "session_id": t.session_id,
+                    }
+                })
+            )
+            await ten_env.send_data(flush_result)
+            ten_env.log_debug("on_data sent flush result")
 
     async def _flush_input_items(self):
         """Flushes the self.queue and cancels the current task."""

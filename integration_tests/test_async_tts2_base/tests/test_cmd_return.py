@@ -32,5 +32,5 @@ class ExtensionTesterCmdReturn(AsyncExtensionTester):
 
 def test_cmd_return():
     tester = ExtensionTesterCmdReturn()
-    tester.set_test_mode_single("test_async_tts_base")
+    tester.set_test_mode_single("test_async_tts2_base")
     tester.run()

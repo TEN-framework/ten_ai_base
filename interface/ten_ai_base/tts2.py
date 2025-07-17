@@ -10,7 +10,7 @@ import traceback
 from typing import AsyncGenerator
 
 from .helper import AsyncQueue
-from .message import ModuleError, ModuleErrorVendorInfo
+from .message import ModuleError, ModuleErrorVendorInfo, ModuleMetricKey, ModuleMetrics, ModuleType
 
 from .struct import TTSMetadata, TTSTextInput, TTSTextResult
 from ten_runtime import (
@@ -225,6 +225,22 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.ten_env.send_data(data)
 
 
+    async def send_tts_ttfb_metrics(
+            self, request_id: str, ttfb_ms: int, metadata: TTSMetadata | None = None
+    ) -> None:
+        data = Data.create("metrics")
+        metrics = ModuleMetrics(
+            id=request_id,
+            module=ModuleType.TTS,
+            vendor=self.vendor(),
+            metrics={
+                ModuleMetricKey.TTS_TTFB: ttfb_ms
+            },
+            metadata=metadata,
+        )
+        data.set_property_from_json(None, metrics.model_dump_json())
+        await self.ten_env.send_data(data)
+
     async def send_tts_error(
         self, request_id: str | None, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None
     ) -> None:
@@ -256,6 +272,16 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
         await self.ten_env.send_data(error_data)
 
+
+    @abstractmethod
+    def vendor(self) -> str:
+        """
+        Get the vendor name of the TTS implementation.
+        This is used for metrics and error reporting.
+        """
+        raise NotImplementedError(
+            "This method should be implemented in subclasses."
+        )
 
     @abstractmethod
     async def request_tts(

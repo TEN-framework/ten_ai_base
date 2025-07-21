@@ -3,7 +3,7 @@ import uuid
 
 from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigModeKeep
 
-from .message import ErrorMessage, ErrorMessageVendorInfo
+from .message import ModuleError, ModuleErrorVendorInfo, ModuleMetrics
 from .transcription import UserTranscription
 from ten_runtime import (
     AsyncExtension,
@@ -17,13 +17,12 @@ from ten_runtime import (
 import asyncio
 import json
 
-
 class AsyncASRBaseExtension(AsyncExtension):
     def __init__(self, name: str):
         super().__init__(name)
 
         self.stopped = False
-        self.ten_env: AsyncTenEnv = None
+        self.ten_env: AsyncTenEnv = None # type: ignore
         self.loop = None
         self.session_id = None
         self.sent_buffer_length = 0
@@ -39,9 +38,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.loop.create_task(self.start_connection())
 
     async def on_audio_frame(
-        self, ten_env: AsyncTenEnv, frame: AudioFrame
+        self, ten_env: AsyncTenEnv, audio_frame: AudioFrame
     ) -> None:
-        frame_buf = frame.get_buf()
+        frame_buf = audio_frame.get_buf()
         if not frame_buf:
             ten_env.log_warn("send_frame: empty pcm_frame detected.")
             return
@@ -56,13 +55,13 @@ class AsyncASRBaseExtension(AsyncExtension):
                         break
                     discard_frame = await self.buffered_frames.get()
                     self.buffered_frames_size -= len(discard_frame.get_buf())
-                self.buffered_frames.put_nowait(frame)
+                self.buffered_frames.put_nowait(audio_frame)
                 self.buffered_frames_size += len(frame_buf)
             # return anyway if not connected
             return
 
 
-        metadata, _ = frame.get_property_to_json("metadata")
+        metadata, _ = audio_frame.get_property_to_json("metadata")
         if metadata:
             try:
                 metadata_json = json.loads(metadata)
@@ -80,7 +79,7 @@ class AsyncASRBaseExtension(AsyncExtension):
                     break
             self.buffered_frames_size = 0
 
-        success = await self.send_audio(frame, self.session_id)
+        success = await self.send_audio(audio_frame, self.session_id)
 
         if success:
             self.sent_buffer_length += len(frame_buf)
@@ -102,8 +101,8 @@ class AsyncASRBaseExtension(AsyncExtension):
         await self.stop_connection()
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
-        cmd_json = cmd.to_json()
-        ten_env.log_info(f"on_cmd json: {cmd_json}")
+        cmd_name = cmd.get_name()
+        ten_env.log_info(f"on_cmd json: {cmd_name}")
 
         cmd_result = CmdResult.create(StatusCode.OK, cmd)
         cmd_result.set_property_string("detail", "success")
@@ -216,7 +215,7 @@ class AsyncASRBaseExtension(AsyncExtension):
 
     
     async def send_asr_error(
-        self, error: ErrorMessage, vendor_info: ErrorMessageVendorInfo | None = None
+        self, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None
     ) -> None:
         """
         Send an error message related to ASR processing.
@@ -235,7 +234,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             None,
             json.dumps(
                 {
-                    "id": "user.transcription",
+                    "id": self.uuid,
                     "code": error.code,
                     "message": error.message,
                     "vendor_info": vendorInfo,
@@ -246,7 +245,7 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         await self.ten_env.send_data(error_data)
 
-    async def send_asr_finalize_end(self, latency_ms: int) -> None:
+    async def send_asr_finalize_end(self) -> None:
         """
         Send a signal that the ASR service has finished processing all audio frames.
         """
@@ -255,14 +254,37 @@ class AsyncASRBaseExtension(AsyncExtension):
             None,
             json.dumps(
                 {
-                    "id": "user.transcription",
-                    "latency_ms": latency_ms,
+                    "id": self.uuid,
                     "metadata": {"session_id": self.session_id},
                 }
             ),
         )
 
         await self.ten_env.send_data(drain_data)
+
+    async def send_asr_metrics(
+        self,
+        metrics: ModuleMetrics
+    ) -> None:
+        """
+        Send metrics related to the ASR module.
+        """
+        metrics_data = Data.create("metrics")
+
+        metrics_data.set_property_from_json(
+            None,
+            json.dumps(
+                {
+                    "id": self.uuid,
+                    "module": metrics.module,
+                    "vendor": metrics.vendor,
+                    "metrics": metrics.metrics,
+                    "metadata": {"session_id": self.session_id},
+                }
+            ),
+        )
+
+        await self.ten_env.send_data(metrics_data)
 
     def calculate_audio_duration(
         self,

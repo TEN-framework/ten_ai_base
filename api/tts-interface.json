@@ -10,10 +10,13 @@
             },
             "dump_path": {
                 "type": "string"
+            },
+            "enable_words": {
+                "type": "bool"
             }
         }
     },
-    "audio_frame_in": [
+    "audio_frame_out": [
         {
             "name": "pcm_frame",
             "property": {
@@ -23,6 +26,9 @@
                         "properties": {
                             "session_id": {
                                 "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
                             }
                         }
                     }
@@ -32,7 +38,38 @@
     ],
     "data_in": [
         {
-            "name": "finalize",
+            "name": "tts_text_input",
+            "property": {
+                "properties": {
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "text": {
+                        "type": "string"
+                    },
+                    "text_input_end": {
+                        "type": "bool"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
+                            }
+                        }
+                    }
+                }
+            },
+            "required": [
+                "request_id",
+                "text"
+            ]
+        },
+        {
+            "name": "flush",
             "property": {
                 "properties": {
                     "id": {
@@ -52,26 +89,20 @@
     ],
     "data_out": [
         {
-            "name": "asr_result",
+            "name": "tts_text_result",
             "property": {
                 "properties": {
-                    "id": {
+                    "request_id": {
                         "type": "string"
                     },
                     "text": {
                         "type": "string"
-                    },
-                    "final": {
-                        "type": "bool"
                     },
                     "start_ms": {
                         "type": "int64"
                     },
                     "duration_ms": {
                         "type": "int64"
-                    },
-                    "language": {
-                        "type": "string"
                     },
                     "words": {
                         "type": "array",
@@ -86,34 +117,41 @@
                                 },
                                 "duration_ms": {
                                     "type": "int64"
-                                },
-                                "stable": {
-                                    "type": "bool"
                                 }
-                            }
+                            },
+                            "required": [
+                                "word",
+                                "start_ms",
+                                "duration_ms"
+                            ]
                         }
+                    },
+                    "text_result_end": {
+                        "type": "bool"
                     },
                     "metadata": {
                         "type": "object",
                         "properties": {
                             "session_id": {
                                 "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
                             }
                         }
                     }
                 }
             },
             "required": [
-                "id",
+                "request_id",
                 "text",
-                "final",
                 "start_ms",
                 "duration_ms",
-                "language"
+                "words"
             ]
         },
         {
-            "name": "asr_finalize_end",
+            "name": "tts_flush_end",
             "property": {
                 "properties": {
                     "id": {
@@ -165,6 +203,9 @@
                         "properties": {
                             "session_id": {
                                 "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
                             }
                         }
                     }
@@ -198,6 +239,9 @@
                         "properties": {
                             "session_id": {
                                 "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
                             }
                         }
                     }

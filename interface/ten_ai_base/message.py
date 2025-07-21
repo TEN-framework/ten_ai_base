@@ -1,13 +1,54 @@
 from pydantic import BaseModel
-from enum import Enum
+from enum import Enum, IntEnum
+from typing import Any
 
+class MetadataKey(str, Enum):
+    SESSION_ID = "session_id"
+    TURN_ID = "turn_id"
 
-class ModuleType(Enum):
+class ModuleType(str, Enum):
+    ASR = "asr"
     LLM = "llm"
     TTS = "tts"
     MLLM = "mllm"
-    STT = "asr"
+    AVATAR = "avatar"
+    TURN = "turn"
 
+class ModuleMetricKey(str, Enum):
+    ASR_TTFW = "ttfw"   # time to first word
+    ASR_TTLW = "ttlw"   # time to last word
+    TTS_TTFB = "ttfb"   # time to first byte
+    LLM_TTFT = "ttft"   # time to first token
+    LLM_TTFS = "ttfs"   # time to first sentence
+
+class ModuleErrorCode(str, Enum):
+    OK = 0
+
+    # After a fatal error occurs, the module will stop all operations.
+    FATAL_ERROR = -1000
+
+    # After a non-fatal error occurs, the module itself will continue to retry.
+    NON_FATAL_ERROR = 1000
+
+class ModuleErrorVendorInfo(BaseModel):
+    vendor: str = ""    # vendor name
+    code: str = ""      # vendor's original error code
+    message: str = ""   # vendor's original error message
+
+class ModuleError(BaseModel):
+    id: str = ""        # uuid
+    module: str = ""    # module type
+    code: int = 0
+    message: str = ""
+    vendor_info: ModuleErrorVendorInfo | None = None
+    metadata: dict[str, Any] = {}
+
+class ModuleMetrics(BaseModel):
+    id: str = ""        # uuid
+    module: str = ""    # module type
+    vendor: str = ""    # vendor name
+    metrics: dict[str, Any] = {}   # key-value pair metrics, e.g. {"ttfb": 100, "ttfs": 200}
+    metadata: dict[str, Any] = {}
 
 class ErrorMessage(BaseModel):
     object: str = "message.error"

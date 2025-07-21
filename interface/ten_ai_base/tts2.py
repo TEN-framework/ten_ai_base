@@ -215,7 +215,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
 
     async def send_tts_ttfb_metrics(
-            self, request_id: str, ttfb_ms: int, metadata: TTSMetadata | None = None
+            self, request_id: str, ttfb_ms: int, turn_id: int = -1
     ) -> None:
         data = Data.create("metrics")
         metrics = ModuleMetrics(
@@ -225,7 +225,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             metrics={
                 ModuleMetricKey.TTS_TTFB: ttfb_ms
             },
-            metadata=metadata,
+            metadata={
+                "session_id": self.session_id or "",
+                "turn_id": turn_id,
+            },
         )
         data.set_property_from_json(None, metrics.model_dump_json())
         await self.ten_env.send_data(data)

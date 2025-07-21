@@ -213,7 +213,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         if transcription.final:
             self.uuid = self.get_uuid()  # Reset UUID for the next final turn
 
-    
+
     async def send_asr_error(
         self, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None
     ) -> None:
@@ -292,9 +292,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         sample_rate: int,
         channels: int = 1,
         sample_width: int = 2,
-    ) -> float:
+    ) -> int:
         """
-        Calculate audio duration in seconds.
+        Calculate audio duration in milliseconds.
 
         Parameters:
         - bytes_length: Length of the audio data in bytes
@@ -303,10 +303,11 @@ class AsyncASRBaseExtension(AsyncExtension):
         - sample_width: Number of bytes per sample (default: 2 for 16-bit PCM)
 
         Returns:
-        - Duration in seconds
+        - Duration in milliseconds (rounded down to nearest int)
         """
         bytes_per_second = sample_rate * channels * sample_width
-        return bytes_length / bytes_per_second
+        duration_seconds = bytes_length / bytes_per_second
+        return int(duration_seconds * 1000)
 
 
     def get_uuid(self) -> str:

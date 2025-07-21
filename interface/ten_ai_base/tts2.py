@@ -41,7 +41,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     def __init__(self, name: str):
         super().__init__(name)
         self.ten_env: AsyncTenEnv = None # type: ignore
-        self.queue = AsyncQueue()
+        self.input_queue = AsyncQueue()
         self.current_task = None
         self.loop_task = None
         self.leftover_bytes = b""
@@ -55,13 +55,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await super().on_start(ten_env)
         if self.loop_task is None:
             self.loop = asyncio.get_event_loop()
-            self.loop_task = self.loop.create_task(self._process_queue(ten_env))
+            self.loop_task = self.loop.create_task(self._process_input_queue(ten_env))
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         await super().on_stop(ten_env)
         await self._flush_input_items()
         if self.loop_task:
             self.loop_task.cancel()
+        await self.input_queue.put(None)  # Signal the loop to stop processing
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(ten_env)
@@ -96,7 +97,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 return
 
             # Start an asynchronous task for handling tts
-            await self.queue.put(t)
+            await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
             if err:
@@ -128,7 +129,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def _flush_input_items(self):
         """Flushes the self.queue and cancels the current task."""
         # Flush the queue using the new flush method
-        await self.queue.flush()
+        await self.input_queue.flush()
 
         # Cancel the current task if one is running
         await self._cancel_current_task()
@@ -141,30 +142,17 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             self.current_task = None
         self.leftover_bytes = b""
 
-    async def _process_tts_stream(self, t: TTSTextInput) -> None:
-        try:
-            self.ten_env.log_info(f"Processing TTS request: {t.text}")
-            async for chunk in self.request_tts(t):
-                await self._send_audio_out(chunk)
-        except asyncio.CancelledError:
-            self.ten_env.log_warn("TTS stream cancelled.")
-        except Exception as e:
-            self.ten_env.log_error(f"TTS stream error: {e}")
 
-    async def _process_queue(self, ten_env: AsyncTenEnv) -> None:
+    async def _process_input_queue(self, ten_env: AsyncTenEnv) -> None:
         """Asynchronously process queue items one by one."""
         while True:
             # Wait for an item to be available in the queue
-            t: TTSTextInput = await self.queue.get()
+            t: TTSTextInput = await self.input_queue.get()
             if t is None:
                 break
 
             try:
-                self.current_task = asyncio.create_task(
-                    self._process_tts_stream(t)
-                )
-                await self.current_task  # Wait for the current task to finish or be cancelled
-                self.current_task = None
+                await self.request_tts(t)
             except asyncio.CancelledError:
                 ten_env.log_info(f"Task cancelled: {t.text}")
             except Exception as err:
@@ -172,7 +160,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     f"Task failed: {t.text}, err: {traceback.format_exc()}"
                 )
 
-    async def _send_audio_out(
+
+    async def send_tts_audio_data(
         self, audio_data: bytes
     ) -> None:
         """End sending audio out."""
@@ -286,7 +275,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     @abstractmethod
     async def request_tts(
         self, t: TTSTextInput
-    ) -> AsyncGenerator[bytes, None]:
+    ) -> None:
         """
         Called when a new input item is available in the queue. Override this method to implement the TTS request logic.
         Use send_audio_out to send the audio data to the output when the audio data is ready.

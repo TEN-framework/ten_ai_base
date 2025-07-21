@@ -39,14 +39,14 @@ class TestAsyncTTS2Extension(AsyncTTS2BaseExtension):
 
     async def request_tts(
         self, t: TTSTextInput
-    ) -> AsyncGenerator[bytes, None]:
+    ) -> None:
         """
         This method is called when the TTS request is made.
         It should yield audio data bytes.
         """
         audio_data_bytes = [3, 100, 7]
         for b in audio_data_bytes:
-            yield bytearray(b)
+            await self.send_tts_audio_data(bytearray(b))
             await asyncio.sleep(0.1)  # Simulate async delay
         
         await self.send_tts_text_result(
@@ -61,6 +61,8 @@ class TestAsyncTTS2Extension(AsyncTTS2BaseExtension):
             )
         )
 
+    def vendor(self):
+        return "sample_vendor"
 
     def synthesize_audio_sample_rate(self):
         return self.config.sample_rate

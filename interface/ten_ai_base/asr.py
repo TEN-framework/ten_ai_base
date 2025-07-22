@@ -17,72 +17,36 @@ from ten_runtime import (
 import asyncio
 import json
 
+
 class AsyncASRBaseExtension(AsyncExtension):
     def __init__(self, name: str):
         super().__init__(name)
 
         self.stopped = False
-        self.ten_env: AsyncTenEnv = None # type: ignore
-        self.loop = None
+        self.ten_env: AsyncTenEnv | None = None
+        self.loop: asyncio.AbstractEventLoop | None = None
         self.session_id = None
         self.sent_buffer_length = 0
         self.buffered_frames = asyncio.Queue[AudioFrame]()
         self.buffered_frames_size = 0
+        self.audio_frames_queue = asyncio.Queue[AudioFrame]()
         self.uuid = self.get_uuid()  # Unique identifier for the current final turn
 
-    async def on_start(self, ten_env: AsyncTenEnv) -> None:
-        ten_env.log_info("on_start")
-        self.loop = asyncio.get_event_loop()
+    async def on_init(self, ten_env: AsyncTenEnv) -> None:
         self.ten_env = ten_env
+        self.loop = asyncio.get_event_loop()
+        self.loop.create_task(self.audio_frame_consumer())
 
-        self.loop.create_task(self.start_connection())
+    async def on_start(self, ten_env: AsyncTenEnv) -> None:
+        assert self.loop is not None
+        ten_env.log_info("on_start")
+
+        await self.start_connection()
 
     async def on_audio_frame(
         self, ten_env: AsyncTenEnv, audio_frame: AudioFrame
     ) -> None:
-        frame_buf = audio_frame.get_buf()
-        if not frame_buf:
-            ten_env.log_warn("send_frame: empty pcm_frame detected.")
-            return
-
-        if not self.is_connected():
-            ten_env.log_debug("send_frame: service not connected.")
-            buffer_strategy = self.buffer_strategy()
-            if isinstance(buffer_strategy, ASRBufferConfigModeKeep):
-                byte_limit = buffer_strategy.byte_limit
-                while self.buffered_frames_size + len(frame_buf) > byte_limit:
-                    if self.buffered_frames.empty():
-                        break
-                    discard_frame = await self.buffered_frames.get()
-                    self.buffered_frames_size -= len(discard_frame.get_buf())
-                self.buffered_frames.put_nowait(audio_frame)
-                self.buffered_frames_size += len(frame_buf)
-            # return anyway if not connected
-            return
-
-
-        metadata, _ = audio_frame.get_property_to_json("metadata")
-        if metadata:
-            try:
-                metadata_json = json.loads(metadata)
-                self.session_id = metadata_json.get("session_id", self.session_id)
-            except json.JSONDecodeError as e:
-                ten_env.log_warn(f"send_frame: invalid metadata json - {e}")
-
-        if self.buffered_frames.qsize() > 0:
-            ten_env.log_debug(f"send_frame: flushing {self.buffered_frames.qsize()} buffered frames.")
-            while True:
-                try:
-                    buffered_frame = self.buffered_frames.get_nowait()
-                    await self.send_audio(buffered_frame, self.session_id)
-                except asyncio.QueueEmpty:
-                    break
-            self.buffered_frames_size = 0
-
-        success = await self.send_audio(audio_frame, self.session_id)
-
-        if success:
-            self.sent_buffer_length += len(frame_buf)
+        await self.audio_frames_queue.put(audio_frame)
 
     async def on_data(self, ten_env: AsyncTenEnv, data: Data) -> None:
         data_name = data.get_name()
@@ -182,6 +146,8 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         Send a transcription result as output.
         """
+        assert self.ten_env is not None
+
         stable_data = Data.create("asr_result")
 
         model_json = transcription.model_dump()
@@ -213,13 +179,14 @@ class AsyncASRBaseExtension(AsyncExtension):
         if transcription.final:
             self.uuid = self.get_uuid()  # Reset UUID for the next final turn
 
-
     async def send_asr_error(
         self, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None
     ) -> None:
         """
         Send an error message related to ASR processing.
         """
+        assert self.ten_env is not None
+
         error_data = Data.create("error")
 
         vendorInfo = None
@@ -249,6 +216,8 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         Send a signal that the ASR service has finished processing all audio frames.
         """
+        assert self.ten_env is not None
+
         drain_data = Data.create("asr_finalize_end")
         drain_data.set_property_from_json(
             None,
@@ -269,6 +238,8 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         Send metrics related to the ASR module.
         """
+        assert self.ten_env is not None
+
         metrics_data = Data.create("metrics")
 
         metrics_data.set_property_from_json(
@@ -309,9 +280,68 @@ class AsyncASRBaseExtension(AsyncExtension):
         duration_seconds = bytes_length / bytes_per_second
         return int(duration_seconds * 1000)
 
-
     def get_uuid(self) -> str:
         """
         Get a unique identifier
         """
         return uuid.uuid4().hex
+
+    async def _handle_audio_frame(
+        self, ten_env: AsyncTenEnv, audio_frame: AudioFrame
+    ) -> None:
+        frame_buf = audio_frame.get_buf()
+        if not frame_buf:
+            ten_env.log_warn("send_frame: empty pcm_frame detected.")
+            return
+
+        if not self.is_connected():
+            ten_env.log_verbose("send_frame: service not connected.")
+            buffer_strategy = self.buffer_strategy()
+            if isinstance(buffer_strategy, ASRBufferConfigModeKeep):
+                byte_limit = buffer_strategy.byte_limit
+                while self.buffered_frames_size + len(frame_buf) > byte_limit:
+                    if self.buffered_frames.empty():
+                        break
+                    discard_frame = await self.buffered_frames.get()
+                    self.buffered_frames_size -= len(discard_frame.get_buf())
+                self.buffered_frames.put_nowait(audio_frame)
+                self.buffered_frames_size += len(frame_buf)
+            # return anyway if not connected
+            return
+
+        metadata, _ = audio_frame.get_property_to_json("metadata")
+        if metadata:
+            try:
+                metadata_json = json.loads(metadata)
+                self.session_id = metadata_json.get(
+                    "session_id", self.session_id)
+            except json.JSONDecodeError as e:
+                ten_env.log_warn(f"send_frame: invalid metadata json - {e}")
+
+        if self.buffered_frames.qsize() > 0:
+            ten_env.log_debug(
+                f"send_frame: flushing {self.buffered_frames.qsize()} buffered frames.")
+            while True:
+                try:
+                    buffered_frame = self.buffered_frames.get_nowait()
+                    await self.send_audio(buffered_frame, self.session_id)
+                except asyncio.QueueEmpty:
+                    break
+            self.buffered_frames_size = 0
+
+        success = await self.send_audio(audio_frame, self.session_id)
+
+        if success:
+            self.sent_buffer_length += len(frame_buf)
+
+    async def audio_frame_consumer(self) -> None:
+        assert self.ten_env is not None
+
+        while not self.stopped:
+            try:
+                audio_frame = await self.audio_frames_queue.get()
+                await self._handle_audio_frame(self.ten_env, audio_frame)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.ten_env.log_error(f"Error consuming audio frame: {e}")

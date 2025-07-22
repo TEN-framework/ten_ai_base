@@ -234,13 +234,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.ten_env.send_data(data)
 
     async def send_tts_error(
-        self, request_id: str | None, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None
+        self, request_id: str | None, error: ModuleError
     ) -> None:
         """
         Send an error message related to ASR processing.
         """
         error_data = Data.create("error")
 
+        vendor_info = error.vendor_info
         vendorInfo = None
         if vendor_info:
             vendorInfo = {

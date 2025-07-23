@@ -7,12 +7,11 @@ from abc import ABC, abstractmethod
 import asyncio
 import json
 import traceback
-from typing import AsyncGenerator
 
 from .helper import AsyncQueue
-from .message import ModuleError, ModuleErrorVendorInfo, ModuleMetricKey, ModuleMetrics, ModuleType
+from .message import ModuleError, ModuleMetricKey, ModuleMetrics, ModuleType
 
-from .struct import TTSMetadata, TTSTextInput, TTSTextResult
+from .struct import TTSFlush, TTSTextInput, TTSTextResult
 from ten_runtime import (
     AsyncExtension,
     Data,
@@ -24,8 +23,8 @@ from ten_runtime.cmd_result import CmdResult, StatusCode
 
 DATA_TTS_TEXT_INPUT = "tts_text_input"
 DATA_TTS_TEXT_RESULT = "tts_text_result"
-DATA_FLUSH = "flush"
-DATA_FLUSH_RESULT = "flush_result"
+DATA_FLUSH = "tts_flush"
+DATA_FLUSH_RESULT = "tts_flush_end"
 
 
 class AsyncTTS2BaseExtension(AsyncExtension, ABC):
@@ -107,7 +106,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             )
 
             try:
-                t = TTSMetadata.model_validate_json(data_payload)
+                t = TTSFlush.model_validate_json(data_payload)
             except Exception as e:
                 ten_env.log_warn(
                     f"invalid data {data_name} payload, err {e}"
@@ -118,9 +117,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             flush_result = Data.create(DATA_FLUSH_RESULT)
             flush_result.set_property_from_json(
                 None, json.dumps({
-                    "metadata": {
-                        "session_id": t.session_id,
-                    }
+                    "flush_id": t.flush_id,
+                    "metadata": t.model_dump_json(),
                 })
             )
             await ten_env.send_data(flush_result)

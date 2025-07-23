@@ -1,8 +1,5 @@
+from typing import Any
 from pydantic import BaseModel
-
-class TTSMetadata(BaseModel):
-    session_id: str = ""
-    turn_id: int = -1
 
 class TTSWord(BaseModel):
     word: str = ""
@@ -13,7 +10,7 @@ class TTSTextInput(BaseModel):
     request_id: str
     text: str
     text_input_end: bool = False
-    metadata: TTSMetadata | None = None  # additional metadata for the transcription
+    metadata: dict[str, Any] = {}  # additional metadata for the transcription
 
 class TTSTextResult(BaseModel):
     request_id: str
@@ -22,5 +19,8 @@ class TTSTextResult(BaseModel):
     duration_ms: int
     words: list[TTSWord] | None = None
     text_result_end: bool = False
-    metadata: TTSMetadata | None = None  # additional metadata for the transcription
+    metadata: dict[str, Any] = {}  # additional metadata for the transcription
 
+class TTSFlush(BaseModel):
+    flush_id: str
+    metadata: dict[str, Any] = {}  # additional metadata for the flush operation

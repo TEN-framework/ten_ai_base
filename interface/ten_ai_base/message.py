@@ -30,6 +30,7 @@ class ModuleErrorCode(str, Enum):
     # After a non-fatal error occurs, the module itself will continue to retry.
     NON_FATAL_ERROR = 1000
 
+
 class ModuleErrorVendorInfo(BaseModel):
     vendor: str = ""    # vendor name
     code: str = ""      # vendor's original error code
@@ -42,6 +43,15 @@ class ModuleError(BaseModel):
     message: str = ""
     vendor_info: ModuleErrorVendorInfo | None = None
     metadata: dict[str, Any] = {}
+
+
+class ModuleVendorException(Exception):
+    def __init__(self, error: ModuleErrorVendorInfo) -> None:
+        super().__init__(error.message)
+        self.error = error
+
+    def __str__(self) -> str:
+        return f"ModuleVendorException: {self.error.message} (code: {self.error.code}, vendor: {self.error.vendor})"
 
 class ModuleMetrics(BaseModel):
     id: str = ""        # uuid

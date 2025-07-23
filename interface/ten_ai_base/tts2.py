@@ -231,6 +231,35 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         data.set_property_from_json(None, metrics.model_dump_json())
         await self.ten_env.send_data(data)
 
+
+    async def send_tts_audio_start(
+            self, request_id: str, turn_id: int = -1
+    ) -> None:
+        data = Data.create("tts_audio_start")
+        data.set_property_from_json(None, json.dumps({
+            "request_id": request_id,
+            "metadata": {
+                "session_id": self.session_id or "",
+                "turn_id": turn_id,
+            }
+        }))
+        await self.ten_env.send_data(data)
+
+    async def send_tts_audio_end(
+            self, request_id: str, request_event_interval_ms: int, request_total_audio_duration_ms: int, turn_id: int = -1
+    ) -> None:
+        data = Data.create("tts_audio_end")
+        data.set_property_from_json(None, json.dumps({
+            "request_id": request_id,
+            "request_event_interval_ms": request_event_interval_ms,
+            "request_total_audio_duration_ms": request_total_audio_duration_ms,
+            "metadata": {
+                "session_id": self.session_id or "",
+                "turn_id": turn_id,
+            }
+        }))
+        await self.ten_env.send_data(data)
+
     async def send_tts_error(
         self, request_id: str | None, error: ModuleError
     ) -> None:

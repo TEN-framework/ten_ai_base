@@ -69,10 +69,10 @@
             ]
         },
         {
-            "name": "flush",
+            "name": "tts_flush",
             "property": {
                 "properties": {
-                    "id": {
+                    "flush_id": {
                         "type": "string"
                     },
                     "metadata": {
@@ -154,7 +154,7 @@
             "name": "tts_flush_end",
             "property": {
                 "properties": {
-                    "id": {
+                    "flush_id": {
                         "type": "string"
                     },
                     "metadata": {
@@ -162,6 +162,54 @@
                         "properties": {
                             "session_id": {
                                 "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "tts_audio_start",
+            "property": {
+                "properties": {
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "tts_audio_end",
+            "property": {
+                "properties": {
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "request_event_interval_ms": {
+                        "type": "int64"
+                    },
+                    "request_total_audio_duration_ms": {
+                        "type": "int64"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
                             }
                         }
                     }

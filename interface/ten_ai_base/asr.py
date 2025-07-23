@@ -23,7 +23,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         super().__init__(name)
 
         self.stopped = False
-        self.ten_env: AsyncTenEnv | None = None
+        self.ten_env: AsyncTenEnv = None # type: ignore
         self.loop: asyncio.AbstractEventLoop | None = None
         self.session_id = None
         self.sent_buffer_length = 0
@@ -145,8 +145,6 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         Send a transcription result as output.
         """
-        assert self.ten_env is not None
-
         stable_data = Data.create("asr_result")
 
         model_json = transcription.model_dump()
@@ -184,8 +182,6 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         Send an error message related to ASR processing.
         """
-        assert self.ten_env is not None
-
         error_data = Data.create("error")
 
         vendorInfo = None
@@ -215,8 +211,6 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         Send a signal that the ASR service has finished processing all audio frames.
         """
-        assert self.ten_env is not None
-
         drain_data = Data.create("asr_finalize_end")
         drain_data.set_property_from_json(
             None,
@@ -237,8 +231,6 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         Send metrics related to the ASR module.
         """
-        assert self.ten_env is not None
-
         metrics_data = Data.create("metrics")
 
         metrics_data.set_property_from_json(
@@ -334,8 +326,6 @@ class AsyncASRBaseExtension(AsyncExtension):
             self.sent_buffer_length += len(frame_buf)
 
     async def _audio_frame_consumer(self) -> None:
-        assert self.ten_env is not None
-
         while not self.stopped:
             try:
                 audio_frame = await self.audio_frames_queue.get()

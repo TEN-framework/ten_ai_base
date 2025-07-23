@@ -38,7 +38,6 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.loop.create_task(self._audio_frame_consumer())
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
-        assert self.loop is not None
         ten_env.log_info("on_start")
 
         await self.start_connection()

@@ -36,9 +36,9 @@ class ExtensionTesterFlush(AsyncExtensionTester):
 
         await asyncio.sleep(1)  # Simulate async initialization delay
 
-        flush_data = Data.create("flush")
+        flush_data = Data.create("tts_flush")
         flush_data.set_property_from_json(
-            None, json.dumps({"metadata": {"session_id": "test_session"}})
+            None, json.dumps({"flush_id":"xxxx","metadata": {"session_id": "test_session"}})
         )
         await ten_env.send_data(flush_data)
 
@@ -68,7 +68,7 @@ class ExtensionTesterFlush(AsyncExtensionTester):
         ten_env.log_debug(f"on_cmd: {cmd_name}")
         await ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
 
-        if cmd_name != "flush":
+        if cmd_name != "tts_flush":
             return
 
         # received flush cmd
@@ -78,11 +78,11 @@ class ExtensionTesterFlush(AsyncExtensionTester):
         data_name = data.get_name()
         ten_env.log_debug(f"on_data for tester: {data_name}")
 
-        if data_name == "flush_result":
+        if data_name == "tts_flush_end":
             # received flush result
             ten_env.log_info("Flush completed successfully.")
             ten_env.stop_test()
-        
+
 
 
 def test_flush():

@@ -38,7 +38,7 @@ class ASRWord(BaseModel):
 
 
 class ASRResult(BaseModel):
-    id: str
+    id: str | None = None
     text: str
     final: bool
     start_ms: int

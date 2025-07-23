@@ -35,7 +35,7 @@ class AsyncASRBaseExtension(AsyncExtension):
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         self.ten_env = ten_env
         self.loop = asyncio.get_event_loop()
-        self.loop.create_task(self.audio_frame_consumer())
+        self.loop.create_task(self._audio_frame_consumer())
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         assert self.loop is not None
@@ -334,7 +334,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         if success:
             self.sent_buffer_length += len(frame_buf)
 
-    async def audio_frame_consumer(self) -> None:
+    async def _audio_frame_consumer(self) -> None:
         assert self.ten_env is not None
 
         while not self.stopped:

@@ -32,10 +32,10 @@
     ],
     "data_in": [
         {
-            "name": "finalize",
+            "name": "asr_finalize",
             "property": {
                 "properties": {
-                    "id": {
+                    "finalize_id": {
                         "type": "string"
                     },
                     "metadata": {
@@ -116,7 +116,7 @@
             "name": "asr_finalize_end",
             "property": {
                 "properties": {
-                    "id": {
+                    "finalize_id": {
                         "type": "string"
                     },
                     "metadata": {

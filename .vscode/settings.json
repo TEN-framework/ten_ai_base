@@ -3,5 +3,10 @@
         "interface",
         ".ten/app/ten_packages/system/ten_runtime_python/interface",
     ],
+    "cursorpyright.analysis.extraPaths":[
+        "interface",
+        ".ten/app/ten_packages/system/ten_runtime_python/interface",
+    ],
+    "cursorpyright.analysis.typeCheckingMode": "basic",
     "editor.formatOnSave": true,
 }

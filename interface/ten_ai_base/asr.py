@@ -219,6 +219,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             json.dumps(
                 {
                     "id": self.uuid,
+                    "module": ModuleType.ASR,
                     "code": error.code,
                     "message": error.message,
                     "vendor_info": vendorInfo,

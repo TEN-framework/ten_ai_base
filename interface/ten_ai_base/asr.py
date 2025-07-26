@@ -30,17 +30,37 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.buffered_frames = asyncio.Queue[AudioFrame]()
         self.buffered_frames_size = 0
         self.uuid = self.get_uuid()  # Unique identifier for the current final turn
+        self.audio_frames_queue = asyncio.Queue[AudioFrame]()
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
         self.loop = asyncio.get_event_loop()
         self.ten_env = ten_env
 
+        self.loop.create_task(self._loop_audio(ten_env))
         self.loop.create_task(self.start_connection())
 
-    async def on_audio_frame(
-        self, ten_env: AsyncTenEnv, frame: AudioFrame
-    ) -> None:
+    async def _loop_audio(self, ten_env: AsyncTenEnv) -> None:
+        """
+        Main loop to handle incoming audio frames asynchronously.
+        This method is called when the extension starts.
+        """
+        ten_env.log_info("Starting audio frame processing loop.")
+        while not self.stopped:
+            try:
+                frame = await self.audio_frames_queue.get()
+                await self._handle_audio_frame(ten_env, frame)
+            except asyncio.CancelledError:
+                ten_env.log_info("Audio frame processing loop cancelled.")
+                break
+            except Exception as e:
+                ten_env.log_error(f"Error in audio frame processing loop: {e}")
+
+    async def _handle_audio_frame(self, ten_env: AsyncTenEnv, frame: AudioFrame) -> None:
+        """
+        Handle incoming audio frames asynchronously.
+        This method is called when an audio frame is received.
+        """
         frame_buf = frame.get_buf()
         if not frame_buf:
             ten_env.log_warn("send_frame: empty pcm_frame detected.")
@@ -84,6 +104,11 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         if success:
             self.sent_buffer_length += len(frame_buf)
+
+    async def on_audio_frame(
+        self, ten_env: AsyncTenEnv, frame: AudioFrame
+    ) -> None:
+        await self.audio_frames_queue.put(frame)
 
     async def on_data(self, ten_env: AsyncTenEnv, data: Data) -> None:
         data_name = data.get_name()
@@ -214,7 +239,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         if transcription.final:
             self.uuid = self.get_uuid()  # Reset UUID for the next final turn
 
-    
+
     async def send_asr_error(
         self, error: ErrorMessage, vendor_info: ErrorMessageVendorInfo | None = None
     ) -> None:

@@ -246,7 +246,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.ten_env.send_data(data)
 
     async def send_tts_audio_end(
-            self, request_id: str, request_event_interval_ms: int, request_total_audio_duration_ms: int, turn_id: int = -1, reason: TTSAudioEndReason = TTSAudioEndReason.END_RESPONSE
+            self, request_id: str, request_event_interval_ms: int, request_total_audio_duration_ms: int, turn_id: int = -1, reason: TTSAudioEndReason = TTSAudioEndReason.REQUEST_END
     ) -> None:
         data = Data.create("tts_audio_end")
         data.set_property_from_json(None, json.dumps({

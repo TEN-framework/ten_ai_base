@@ -1,3 +1,8 @@
+#
+# This file is part of TEN Framework, an open source project.
+# Licensed under the Apache License, Version 2.0.
+# See the LICENSE file for more information.
+#
 import builtins
 import json
 
@@ -120,9 +125,7 @@ class BaseConfig:
                             )
                         setattr(self, field.name, val)
                     case _:
-                        val, err = await ten_env.get_property_to_json(
-                            field.name
-                        )
+                        val, err = await ten_env.get_property_to_json(field.name)
                         if err:
                             raise RuntimeError(
                                 f"Failed to  get property {field.name}: {err}"

@@ -1,3 +1,8 @@
+#
+# This file is part of TEN Framework, an open source project.
+# Licensed under the Apache License, Version 2.0.
+# See the LICENSE file for more information.
+#
 from enum import Enum
 from typing import Iterable, Optional, TypeAlias, Union, Dict, Any
 from pydantic import BaseModel

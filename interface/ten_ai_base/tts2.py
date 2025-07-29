@@ -282,10 +282,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             None,
             json.dumps(
                 {
-                    "id": request_id,
+                    "id": request_id or "",
                     "code": error.code,
                     "message": error.message,
-                    "vendor_info": vendorInfo,
+                    "vendor_info": vendorInfo or {},
                     "metadata": {"session_id": self.session_id or ""},
                 }
             ),

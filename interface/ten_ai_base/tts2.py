@@ -285,7 +285,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     "code": error.code,
                     "message": error.message,
                     "vendor_info": vendorInfo,
-                    "metadata": {"session_id": self.session_id},
+                    "metadata": {"session_id": self.session_id or ""},
                 }
             ),
         )

@@ -9,7 +9,7 @@ import json
 import traceback
 
 from .helper import AsyncQueue
-from .message import ModuleError, ModuleMetricKey, ModuleMetrics, ModuleType
+from .message import ModuleError, ModuleMetricKey, ModuleMetrics, ModuleType, TTSAudioEndReason
 
 from .struct import TTSFlush, TTSTextInput, TTSTextResult
 from ten_runtime import (
@@ -246,13 +246,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.ten_env.send_data(data)
 
     async def send_tts_audio_end(
-            self, request_id: str, request_event_interval_ms: int, request_total_audio_duration_ms: int, turn_id: int = -1
+            self, request_id: str, request_event_interval_ms: int, request_total_audio_duration_ms: int, turn_id: int = -1, reason: TTSAudioEndReason = TTSAudioEndReason.REQUEST_END
     ) -> None:
         data = Data.create("tts_audio_end")
         data.set_property_from_json(None, json.dumps({
             "request_id": request_id,
             "request_event_interval_ms": request_event_interval_ms,
             "request_total_audio_duration_ms": request_total_audio_duration_ms,
+            "reason": reason.value,
             "metadata": {
                 "session_id": self.session_id or "",
                 "turn_id": turn_id,
@@ -281,10 +282,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             None,
             json.dumps(
                 {
-                    "id": request_id,
+                    "id": request_id or "",
                     "code": error.code,
                     "message": error.message,
-                    "vendor_info": vendorInfo,
+                    "vendor_info": vendorInfo or {},
                     "metadata": {"session_id": self.session_id or ""},
                 }
             ),

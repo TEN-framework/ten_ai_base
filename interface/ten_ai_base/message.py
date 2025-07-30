@@ -84,3 +84,7 @@ class MetricsMessage(BaseModel):
     metric_name: str = ""
     turn_id: int = 0
     latency_ms: int = 0
+
+class TTSAudioEndReason(IntEnum):
+    REQUEST_END = 1
+    INTERRUPTED = 2

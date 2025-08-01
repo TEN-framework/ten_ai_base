@@ -42,7 +42,26 @@
             },
             "result": {
                 "property": {
-                    "properties": {}
+                    "properties": {
+                        "id": {
+                            "type": "string"
+                        },
+                        "model": {
+                            "type": "string"
+                        },
+                        "choices": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        },
+                        "service_tier": {
+                            "type": "string"
+                        },
+                        "created": {
+                            "type": "int64"
+                        }
+                    }
                 }
             }
         }

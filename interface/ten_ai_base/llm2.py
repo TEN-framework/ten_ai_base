@@ -4,21 +4,14 @@
 # See the LICENSE file for more information.
 #
 from abc import ABC, abstractmethod
-import traceback
 
-from ten_ai_base.struct import LLMInput
+from .struct import LLMInput, LLMOutput
 from ten_runtime import (
     AsyncExtension,
 )
 from ten_runtime.async_ten_env import AsyncTenEnv
 from ten_runtime.cmd import Cmd
 from ten_runtime.cmd_result import CmdResult, StatusCode
-from .const import (
-    CMD_PROPERTY_TOOL,
-    CMD_TOOL_REGISTER,
-    CMD_CHAT_COMPLETION_CALL,
-)
-from .types import LLMToolMetadata
 import json
 
 
@@ -56,56 +49,40 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
         """
         cmd_name = cmd.get_name()
         async_ten_env.log_debug(f"on_cmd name {cmd_name}")
-        if cmd_name == CMD_TOOL_REGISTER:
-            try:
-                tool_metadata_json, err = cmd.get_property_to_json(
-                    CMD_PROPERTY_TOOL
-                )
-                if err:
-                    raise RuntimeError(f"Failed to  get tool metadata: {err}")
-                async_ten_env.log_info(f"register tool: {tool_metadata_json}")
-                tool_metadata = LLMToolMetadata.model_validate_json(
-                    tool_metadata_json
-                )
-                async with self.available_tools_lock:
-                    self.available_tools.append(tool_metadata)
-                await self.on_tools_update(async_ten_env, tool_metadata)
+        try:
+            if cmd_name == "chat_completion":
+                try:
+                    payload, err = cmd.get_property_to_json(None)
+                    if err:
+                        raise RuntimeError(f"Failed  to get payload: {err}")
+                    args = LLMInput.model_validate_json(
+                        payload
+                    )
+                    response = await self.on_call_chat_completion(
+                        async_ten_env, args
+                    )
+                    cmd_result = CmdResult.create(StatusCode.OK, cmd)
+                    cmd_result.set_property_from_json("response", LLMOutput.model_dump_json(response))
+                    await async_ten_env.return_result(cmd_result)
+                except Exception as err:
+                    async_ten_env.log_warn(f"on_cmd failed: {err}")
+                    await async_ten_env.return_result(
+                        CmdResult.create(StatusCode.ERROR, cmd)
+                    )
+            else:
                 await async_ten_env.return_result(
                     CmdResult.create(StatusCode.OK, cmd)
                 )
-            except Exception:
-                async_ten_env.log_warn(
-                    f"on_cmd failed: {traceback.format_exc()}"
-                )
-                await async_ten_env.return_result(
-                    CmdResult.create(StatusCode.ERROR, cmd)
-                )
-        elif cmd_name == CMD_CHAT_COMPLETION_CALL:
-            try:
-                arguments_str, err = cmd.get_property_to_json("arguments")
-                if err:
-                    raise RuntimeError(f"Failed  to get arguments: {err}")
-                args = json.loads(arguments_str)
-                response = await self.on_call_chat_completion(
-                    async_ten_env, **args
-                )
-                cmd_result = CmdResult.create(StatusCode.OK, cmd)
-                cmd_result.set_property_from_json("response", response)
-                await async_ten_env.return_result(cmd_result)
-            except Exception as err:
-                async_ten_env.log_warn(f"on_cmd failed: {err}")
-                await async_ten_env.return_result(
-                    CmdResult.create(StatusCode.ERROR, cmd)
-                )
-        else:
+        except Exception as e:
+            async_ten_env.log_error(f"on_cmd error: {e}")
             await async_ten_env.return_result(
-                CmdResult.create(StatusCode.OK, cmd)
+                CmdResult.create(StatusCode.ERROR, cmd)
             )
 
     @abstractmethod
     async def on_call_chat_completion(
         self, async_ten_env: AsyncTenEnv, input: LLMInput
-    ) -> any:
+    ) -> LLMOutput:
         """Called when a chat completion is requested by cmd call. Implement this method to process the chat completion."""
         raise NotImplementedError(
             "on_call_chat_completion must be implemented in the subclass"

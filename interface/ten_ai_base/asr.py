@@ -171,7 +171,8 @@ class AsyncASRBaseExtension(AsyncExtension):
         Send a transcription result as output.
         """
         asr_result.id = self.uuid
-        asr_result.metadata[PROPERTY_KEY_SESSION_ID] = self.session_id
+        if self.session_id is not None:
+            asr_result.metadata[PROPERTY_KEY_SESSION_ID] = self.session_id
 
         # If this is the first result and there is a timestamp for the first
         # audio sent, calculate and send TTFW.
@@ -228,7 +229,11 @@ class AsyncASRBaseExtension(AsyncExtension):
                     "code": error.code,
                     "message": error.message,
                     "vendor_info": vendorInfo,
-                    "metadata": {PROPERTY_KEY_SESSION_ID: self.session_id},
+                    "metadata": (
+                        {}
+                        if self.session_id is None
+                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
+                    ),
                 }
             ),
         )
@@ -246,7 +251,11 @@ class AsyncASRBaseExtension(AsyncExtension):
             json.dumps(
                 {
                     "finalize_id": self.finalize_id,
-                    "metadata": {PROPERTY_KEY_SESSION_ID: self.session_id},
+                    "metadata": (
+                        {}
+                        if self.session_id is None
+                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
+                    ),
                 }
             ),
         )
@@ -267,7 +276,11 @@ class AsyncASRBaseExtension(AsyncExtension):
                     "module": metrics.module,
                     "vendor": metrics.vendor,
                     "metrics": metrics.metrics,
-                    "metadata": {PROPERTY_KEY_SESSION_ID: self.session_id},
+                    "metadata": (
+                        {}
+                        if self.session_id is None
+                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
+                    ),
                 }
             ),
         )

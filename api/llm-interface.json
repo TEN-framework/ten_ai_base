@@ -49,18 +49,12 @@
                         "id": {
                             "type": "string"
                         },
-                        "model": {
-                            "type": "string"
-                        },
                         "choices": {
                             "type": "array",
                             "items": {
                                 "type": "object",
                                 "properties": {}
                             }
-                        },
-                        "service_tier": {
-                            "type": "string"
                         },
                         "created": {
                             "type": "int64"
@@ -71,23 +65,6 @@
         }
     ],
     "data_out": [
-        {
-            "name": "llm_tool_call",
-            "property": {
-                "properties": {
-                    "tool_call_id": {
-                        "type": "string"
-                    },
-                    "tool_name": {
-                        "type": "string"
-                    },
-                    "arguments": {
-                        "type": "object",
-                        "properties": {}
-                    }
-                }
-            }
-        },
         {
             "name": "metrics",
             "property": {

@@ -144,6 +144,5 @@ class LLMOutput(BaseModel):
     """
     id: str
     model: str
-    choices: list[LLMOutputChoice]
-    service_tier: Optional[str] = None
+    choice: LLMOutputChoice
     created: Optional[int] = None

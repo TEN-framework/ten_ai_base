@@ -4,8 +4,10 @@
 # See the LICENSE file for more information.
 #
 from abc import ABC, abstractmethod
+import traceback
+from typing import Any, AsyncGenerator, Coroutine
 
-from .struct import LLMInput, LLMOutput
+from .struct import LLMInput, LLMOutput, LLMOutputChoice
 from ten_runtime import (
     AsyncExtension,
 )
@@ -53,38 +55,42 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
         async_ten_env.log_debug(f"on_cmd name {cmd_name}")
         try:
             if cmd_name == "chat_completion":
-                try:
-                    payload, err = cmd.get_property_to_json(None)
-                    if err:
-                        raise RuntimeError(f"Failed  to get payload: {err}")
-                    args = LLMInput.model_validate_json(
-                        payload
-                    )
-                    response = await self.on_call_chat_completion(
-                        async_ten_env, args
-                    )
+                payload, err = cmd.get_property_to_json(None)
+                if err:
+                    raise RuntimeError(f"Failed  to get payload: {err}")
+                args = LLMInput.model_validate_json(
+                    payload
+                )
+                response = self.on_call_chat_completion(
+                    async_ten_env, args
+                )
+
+                async for llm_choice in response:
+                    # If the response is a final output, we can return it directly
                     cmd_result = CmdResult.create(StatusCode.OK, cmd)
-                    cmd_result.set_property_from_json("response", LLMOutput.model_dump_json(response))
-                    await async_ten_env.return_result(cmd_result)
-                except Exception as err:
-                    async_ten_env.log_warn(f"on_cmd failed: {err}")
-                    await async_ten_env.return_result(
-                        CmdResult.create(StatusCode.ERROR, cmd)
+                    cmd_result.set_property_from_json(
+                        None, llm_choice.model_dump_json()
                     )
+                    cmd_result.set_final(False)
+                    await async_ten_env.return_result(cmd_result)
+
+                cmd_result = CmdResult.create(StatusCode.OK, cmd)
+                cmd_result.set_final(True)
+                await async_ten_env.return_result(cmd_result)
             else:
                 await async_ten_env.return_result(
                     CmdResult.create(StatusCode.OK, cmd)
                 )
         except Exception as e:
-            async_ten_env.log_error(f"on_cmd error: {e}")
+            async_ten_env.log_error(f"on_cmd error: {traceback.format_exc()}")
             await async_ten_env.return_result(
                 CmdResult.create(StatusCode.ERROR, cmd)
             )
 
     @abstractmethod
-    async def on_call_chat_completion(
+    def on_call_chat_completion(
         self, async_ten_env: AsyncTenEnv, input: LLMInput
-    ) -> LLMOutput:
+    ) -> AsyncGenerator[LLMOutput, None]:
         """Called when a chat completion is requested by cmd call. Implement this method to process the chat completion."""
         raise NotImplementedError(
             "on_call_chat_completion must be implemented in the subclass"

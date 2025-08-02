@@ -295,9 +295,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         sample_rate: int,
         channels: int = 1,
         sample_width: int = 2,
-    ) -> float:
+    ) -> int:
         """
-        Calculate audio duration in seconds.
+        Calculate audio duration in milliseconds.
 
         Parameters:
         - bytes_length: Length of the audio data in bytes
@@ -306,10 +306,10 @@ class AsyncASRBaseExtension(AsyncExtension):
         - sample_width: Number of bytes per sample (default: 2 for 16-bit PCM)
 
         Returns:
-        - Duration in seconds
+        - Duration in milliseconds
         """
         bytes_per_second = sample_rate * channels * sample_width
-        return bytes_length / bytes_per_second
+        return int(bytes_length / bytes_per_second * 1000)
 
 
     def get_uuid(self) -> str:

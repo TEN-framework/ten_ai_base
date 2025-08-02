@@ -29,12 +29,14 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
 
     def __init__(self, name: str):
         super().__init__(name)
+        self.ten_env: AsyncTenEnv = None
 
     async def on_init(self, async_ten_env: AsyncTenEnv) -> None:
         await super().on_init(async_ten_env)
 
     async def on_start(self, async_ten_env: AsyncTenEnv) -> None:
         await super().on_start(async_ten_env)
+        self.ten_env = async_ten_env
 
     async def on_stop(self, async_ten_env: AsyncTenEnv) -> None:
         await super().on_stop(async_ten_env)

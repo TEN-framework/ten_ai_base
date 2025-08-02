@@ -11,11 +11,12 @@
                     "messages": {
                         "type": "array",
                         "items": {
-                            "type": "object"
+                            "type": "object",
+                            "properties": {}
                         }
                     },
                     "streaming": {
-                        "type": "boolean"
+                        "type": "bool"
                     },
                     "tools": {
                         "type": "array",
@@ -26,7 +27,8 @@
                                     "type": "string"
                                 },
                                 "function": {
-                                    "type": "object"
+                                    "type": "object",
+                                    "properties": {}
                                 }
                             },
                             "required": [
@@ -36,7 +38,8 @@
                         }
                     },
                     "parameters": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {}
                     }
                 }
             },
@@ -52,7 +55,8 @@
                         "choices": {
                             "type": "array",
                             "items": {
-                                "type": "object"
+                                "type": "object",
+                                "properties": {}
                             }
                         },
                         "service_tier": {
@@ -78,7 +82,8 @@
                         "type": "string"
                     },
                     "arguments": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {}
                     }
                 }
             }

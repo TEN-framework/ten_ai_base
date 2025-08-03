@@ -31,7 +31,7 @@
                                 },
                                 "parameters": {
                                     "type": "array",
-                                    "item": {
+                                    "items": {
                                         "type": "object",
                                         "properties": {}
                                     }
@@ -51,15 +51,8 @@
             "result": {
                 "property": {
                     "properties": {
-                        "id": {
+                        "response_id": {
                             "type": "string"
-                        },
-                        "choices": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {}
-                            }
                         },
                         "created": {
                             "type": "int64"

@@ -5,16 +5,15 @@
 #
 from abc import ABC, abstractmethod
 import traceback
-from typing import Any, AsyncGenerator, Coroutine
+from typing import AsyncGenerator
 
-from .struct import LLMInput, LLMOutput, LLMOutputChoice
+from .struct import LLMInput, LLMResponse
 from ten_runtime import (
     AsyncExtension,
 )
 from ten_runtime.async_ten_env import AsyncTenEnv
 from ten_runtime.cmd import Cmd
 from ten_runtime.cmd_result import CmdResult, StatusCode
-import json
 
 
 class AsyncLLM2BaseExtension(AsyncExtension, ABC):
@@ -52,7 +51,7 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
         return True if the command is handled, False otherwise
         """
         cmd_name = cmd.get_name()
-        async_ten_env.log_debug(f"on_cmd name {cmd_name}")
+        async_ten_env.log_debug(f"on_cmd name22 {cmd_name}")
         try:
             if cmd_name == "chat_completion":
                 payload, err = cmd.get_property_to_json(None)
@@ -90,7 +89,7 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
     @abstractmethod
     def on_call_chat_completion(
         self, async_ten_env: AsyncTenEnv, input: LLMInput
-    ) -> AsyncGenerator[LLMOutput, None]:
+    ) -> AsyncGenerator[LLMResponse, None]:
         """Called when a chat completion is requested by cmd call. Implement this method to process the chat completion."""
         raise NotImplementedError(
             "on_call_chat_completion must be implemented in the subclass"

@@ -3,6 +3,8 @@
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file for more information.
 #
+from enum import Enum
+import json
 from typing import Any, Optional, TypeAlias, Union
 from pydantic import BaseModel
 
@@ -91,42 +93,49 @@ class LLMInput(BaseModel):
     parameters: Optional[dict[str, Any]] = None
 
 
-class LLMOutputChoiceDeltaToolCall(BaseModel):
-    """
-    Model for a tool call in the delta of LLM output choices.
-    This model is used to define the structure of tool calls that may be part of the changes in choices returned by the LLM.
-    """
-    id: str
-    type: str
-    function: Optional[dict] = None
-    index: int = None
+class EventType(str, Enum):
+    MESSAGE_CONTENT = "message_content"
+    TOOL_CALL_CONTENT = "tool_call_content"
 
-class LLMOutputChoiceDelta(BaseModel):
-    """
-    Model for the delta of a choice in LLM output.
-    This model is used to define the structure of changes in choices returned by the LLM.
-    """
-    role: Optional[str] = None
-    content: Optional[str] = None
-    refusal: Optional[str] = None
-    tool_calls: Optional[list[LLMOutputChoiceDeltaToolCall]] = None
 
-class LLMOutputChoice(BaseModel):
-    """
-    Model for a single choice in LLM output.
-    This model is used to define the structure of choices returned by the LLM.
-    """
-    index: int
-    logprobs: Optional[dict] = None
-    finish_reason: Optional[str] = None
-    delta: Optional[LLMOutputChoiceDelta] = None
 
-class LLMOutput(BaseModel):
+
+class LLMResponse(BaseModel):
     """
     Model for LLM output data.
     This model is used to define the structure of the output data returned by LLM operations.
     """
-    id: str
-    model: str
-    choice: LLMOutputChoice
+    response_id: str
     created: Optional[int] = None
+
+class LLMResponseMessage(LLMResponse):
+    """
+    Model for a single message in LLM output.
+    This model is used to define the structure of messages returned by the LLM.
+    """
+    role: str
+    content: Optional[str] = None
+    type: EventType = EventType.MESSAGE_CONTENT
+
+class LLMResponseToolCall(LLMResponse):
+    """
+    Model for a tool call in LLM output.
+    This model is used to define the structure of tool calls returned by the LLM.
+    """
+    tool_call_id: str
+    name: str
+    type: EventType = EventType.TOOL_CALL_CONTENT
+    arguments: Optional[dict[str, Any]] = None
+
+
+
+def parse_llm_response(unparsed_string: str) -> LLMResponse:
+    data = json.loads(unparsed_string)
+
+    # Dynamically select the correct message class based on the `type` field, using from_dict
+    if data["type"] == EventType.MESSAGE_CONTENT:
+        return LLMResponseMessage.model_validate(data)
+    elif data["type"] == EventType.TOOL_CALL_CONTENT:
+        return LLMResponseToolCall.model_validate(data)
+
+    raise ValueError(f"Unknown message type: {data['type']}")

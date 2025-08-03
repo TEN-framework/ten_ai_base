@@ -23,17 +23,22 @@
                         "items": {
                             "type": "object",
                             "properties": {
-                                "type": {
+                                "name": {
                                     "type": "string"
                                 },
-                                "function": {
-                                    "type": "object",
-                                    "properties": {}
+                                "description": {
+                                    "type": "string"
+                                },
+                                "parameters": {
+                                    "type": "array",
+                                    "item": {
+                                        "type": "object",
+                                        "properties": {}
+                                    }
                                 }
                             },
                             "required": [
-                                "type",
-                                "function"
+                                "name"
                             ]
                         }
                     },

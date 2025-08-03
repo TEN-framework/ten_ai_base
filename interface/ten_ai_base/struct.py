@@ -6,6 +6,8 @@
 from typing import Any, Optional, TypeAlias, Union
 from pydantic import BaseModel
 
+from .types import LLMToolMetadata
+
 
 class TTSWord(BaseModel):
     word: str = ""
@@ -77,25 +79,6 @@ class LLMInputMessage(BaseModel):
     content: LLMInputMessageContent
     tool_call_id: Optional[str] = None
 
-class LLMInputToolParameters(BaseModel):
-    """
-    Model for the parameters of a tool used in LLM operations.
-    This model is used to define the structure of parameters for tools that can be invoked by the LLM.
-    """
-    name: str
-    type: str
-    description: str
-    required: Optional[bool] = False
-
-class LLMInputTool(BaseModel):
-    """
-    Model for a tool available to the LLM.
-    This model is used to define the structure of tools that can be used in LLM operations.
-    """
-    name: str
-    description: str
-    parameters: list[LLMInputToolParameters]
-
 class LLMInput(BaseModel):
     """
     Model for LLM input data.
@@ -104,7 +87,8 @@ class LLMInput(BaseModel):
     model: str
     messages: list[LLMInputMessage]
     streaming: Optional[bool] = True
-    tools: Optional[list[LLMInputTool]] = None
+    tools: Optional[list[LLMToolMetadata]] = None
+    parameters: Optional[dict[str, Any]] = None
 
 
 class LLMOutputChoiceDeltaToolCall(BaseModel):

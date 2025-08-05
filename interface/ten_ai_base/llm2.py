@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 import traceback
 from typing import AsyncGenerator
 
-from .struct import LLMInput, LLMResponse
+from .struct import LLMRequest, LLMResponse
 from ten_runtime import (
     AsyncExtension,
 )
@@ -57,7 +57,7 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
                 payload, err = cmd.get_property_to_json(None)
                 if err:
                     raise RuntimeError(f"Failed  to get payload: {err}")
-                args = LLMInput.model_validate_json(
+                args = LLMRequest.model_validate_json(
                     payload
                 )
                 response = self.on_call_chat_completion(
@@ -88,7 +88,7 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
 
     @abstractmethod
     def on_call_chat_completion(
-        self, async_ten_env: AsyncTenEnv, input: LLMInput
+        self, async_ten_env: AsyncTenEnv, input: LLMRequest
     ) -> AsyncGenerator[LLMResponse, None]:
         """Called when a chat completion is requested by cmd call. Implement this method to process the chat completion."""
         raise NotImplementedError(

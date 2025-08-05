@@ -98,6 +98,7 @@ class LLMMessageFunctionCall(BaseModel):
     call_id: str                    # ID to track this call across response
     name: str                       # Name of the function to call
     arguments: str                  # JSON string with input parameters
+    role: Literal["assistant"] = "assistant"  # Role of the message sender
 
 
 # ----------- Tool Response Message (custom output) -----------
@@ -106,6 +107,7 @@ class LLMMessageFunctionCallOutput(BaseModel):
     type: Literal["function_call_output"]  # Custom type for tool result message
     call_id: str                           # Must match the call_id from function_call
     output: str                            # JSON string of result or plain string
+    role: Literal["tool"] = "tool"  # Role of the message sender
 
 
 # ----------- Union for all supported message types -----------
@@ -129,7 +131,7 @@ class LLMRequest(BaseModel):
 
 
 class EventType(str, Enum):
-    MESSAGE_CONTENT = "message_content"
+    MESSAGE_CONTENT_DELTA = "message_content_delta"
     MESSAGE_CONTENT_DONE = "message_content_done"
     TOOL_CALL_CONTENT = "tool_call_content"
 
@@ -141,7 +143,7 @@ class LLMResponse(BaseModel):
     response_id: str
     created: Optional[int] = None
 
-class LLMResponseMessage(LLMResponse):
+class LLMResponseMessageDelta(LLMResponse):
     """
     Model for a single message in LLM output.
     This model is used to define the structure of messages returned by the LLM.
@@ -149,7 +151,7 @@ class LLMResponseMessage(LLMResponse):
     role: str
     content: Optional[str] = None
     delta: Optional[str] = None
-    type: EventType = EventType.MESSAGE_CONTENT
+    type: EventType = EventType.MESSAGE_CONTENT_DELTA
 
 class LLMResponseMessageDone(LLMResponse):
     """
@@ -165,6 +167,7 @@ class LLMResponseToolCall(LLMResponse):
     Model for a tool call in LLM output.
     This model is used to define the structure of tool calls returned by the LLM.
     """
+    id: str
     tool_call_id: str
     name: str
     type: EventType = EventType.TOOL_CALL_CONTENT
@@ -176,8 +179,8 @@ def parse_llm_response(unparsed_string: str) -> LLMResponse:
     data = json.loads(unparsed_string)
 
     # Dynamically select the correct message class based on the `type` field, using from_dict
-    if data["type"] == EventType.MESSAGE_CONTENT:
-        return LLMResponseMessage.model_validate(data)
+    if data["type"] == EventType.MESSAGE_CONTENT_DELTA:
+        return LLMResponseMessageDelta.model_validate(data)
     elif data["type"] == EventType.TOOL_CALL_CONTENT:
         return LLMResponseToolCall.model_validate(data)
     elif data["type"] == EventType.MESSAGE_CONTENT_DONE:

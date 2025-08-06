@@ -22,6 +22,9 @@ class ModuleType(str, Enum):
 class ModuleMetricKey(str, Enum):
     ASR_TTFW = "ttfw"   # time to first word
     ASR_TTLW = "ttlw"   # time to last word
+    ASR_CONNECT_DELAY = "connect_delay"   # time cost to connect to asr server
+    ASR_ACTUAL_SEND = "actual_send"   # audio duration sent to asr server
+    ASR_VENDOR_METRICS = "vendor_metrics"   # vendor specific metrics
     TTS_TTFB = "ttfb"   # time to first byte
     LLM_TTFT = "ttft"   # time to first token
     LLM_TTFS = "ttfs"   # time to first sentence

@@ -4,13 +4,20 @@
 # See the LICENSE file for more information.
 #
 from abc import abstractmethod
-from typing import final
+from typing import Any, final
 import uuid
 
 from .struct import ASRResult
 from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigModeKeep
 
-from .message import ModuleError, ModuleErrorVendorInfo, ModuleMetrics, ModuleType
+from .message import (
+    ModuleError,
+    ModuleErrorVendorInfo,
+    ModuleMetricKey,
+    ModuleMetrics,
+    ModuleType,
+)
+from .timeline import AudioTimeline
 from .const import (
     DATA_IN_ASR_FINALIZE,
     DATA_OUT_ASR_FINALIZE_END,
@@ -37,13 +44,14 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         self.stopped = False
         self.ten_env: AsyncTenEnv = None  # type: ignore
-        self.loop: asyncio.AbstractEventLoop | None = None
         self.session_id = None
         self.finalize_id = None
         self.sent_buffer_length = 0
         self.buffered_frames = asyncio.Queue[AudioFrame]()
         self.buffered_frames_size = 0
         self.audio_frames_queue = asyncio.Queue[AudioFrame]()
+        self.audio_timeline = AudioTimeline()
+        self.audio_actual_send_metrics_task: asyncio.Task[None] | None = None
         self.uuid = self._get_uuid()  # Unique identifier for the current final turn
 
         # States for TTFW calculation
@@ -57,11 +65,15 @@ class AsyncASRBaseExtension(AsyncExtension):
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         self.ten_env = ten_env
-        self.loop = asyncio.get_event_loop()
-        self.loop.create_task(self._audio_frame_consumer())
+        asyncio.create_task(self._audio_frame_consumer())
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
+
+        # Create a task to send audio actual send metrics
+        self.audio_actual_send_metrics_task = asyncio.create_task(
+            self._send_audio_actual_send_metrics_task()
+        )
 
         await self.start_connection()
 
@@ -94,6 +106,12 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.stopped = True
 
         await self.stop_connection()
+
+        if self.audio_actual_send_metrics_task:
+            self.audio_actual_send_metrics_task.cancel()
+            self.audio_actual_send_metrics_task = None
+
+        await self._send_audio_actual_send_metrics()
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
         cmd_name = cmd.get_name()
@@ -149,6 +167,12 @@ class AsyncASRBaseExtension(AsyncExtension):
         Get the buffer strategy for audio frames when not connected
         """
         return ASRBufferConfigModeDiscard()
+
+    def audio_actual_send_metrics_interval(self) -> int:
+        """
+        Get the interval in seconds for sending audio actual send metrics.
+        """
+        return 5
 
     @abstractmethod
     async def send_audio(self, frame: AudioFrame, session_id: str | None) -> bool:
@@ -262,6 +286,46 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         await self.ten_env.send_data(drain_data)
 
+    @final
+    async def send_connect_delay_metrics(self, connect_delay: int) -> None:
+        """
+        Send metrics for time to connect to ASR server.
+        """
+        metrics = ModuleMetrics(
+            module=ModuleType.ASR,
+            vendor=self.vendor(),
+            metrics={ModuleMetricKey.ASR_CONNECT_DELAY: connect_delay},
+        )
+        await self._send_asr_metrics(metrics)
+
+    @final
+    async def send_vendor_metrics(self, vendor_metrics: dict[str, Any]) -> None:
+        """
+        Send vendor specific metrics.
+        """
+        metrics = ModuleMetrics(
+            module=ModuleType.ASR,
+            vendor=self.vendor(),
+            metrics={ModuleMetricKey.ASR_VENDOR_METRICS: vendor_metrics},
+        )
+        await self._send_asr_metrics(metrics)
+
+    async def _send_audio_actual_send_metrics(self) -> None:
+        """
+        Send audio actual send metrics.
+        """
+        actual_send = (
+            self.audio_timeline.total_user_audio_duration
+            + self.audio_timeline.total_silence_audio_duration
+        )
+
+        metrics = ModuleMetrics(
+            module=ModuleType.ASR,
+            vendor=self.vendor(),
+            metrics={ModuleMetricKey.ASR_ACTUAL_SEND: actual_send},
+        )
+        await self._send_asr_metrics(metrics)
+
     async def _send_asr_metrics(self, metrics: ModuleMetrics) -> None:
         """
         Send metrics related to the ASR module.
@@ -294,7 +358,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         metrics = ModuleMetrics(
             module=ModuleType.ASR,
             vendor=self.vendor(),
-            metrics={"ttfw": ttfw},
+            metrics={ModuleMetricKey.ASR_TTFW: ttfw},
         )
 
         await self._send_asr_metrics(metrics)
@@ -306,7 +370,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         metrics = ModuleMetrics(
             module=ModuleType.ASR,
             vendor=self.vendor(),
-            metrics={"ttlw": ttlw},
+            metrics={ModuleMetricKey.ASR_TTLW: ttlw},
         )
 
         await self._send_asr_metrics(metrics)
@@ -380,3 +444,13 @@ class AsyncASRBaseExtension(AsyncExtension):
                 break
             except Exception as e:
                 self.ten_env.log_error(f"Error consuming audio frame: {e}")
+
+    async def _send_audio_actual_send_metrics_task(self) -> None:
+        """
+        Send audio actual send metrics periodically.
+        """
+        interval = max(1, self.audio_actual_send_metrics_interval())
+
+        while not self.stopped:
+            await asyncio.sleep(interval)
+            await self._send_audio_actual_send_metrics()

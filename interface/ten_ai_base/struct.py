@@ -133,6 +133,8 @@ class LLMRequest(BaseModel):
 class EventType(str, Enum):
     MESSAGE_CONTENT_DELTA = "message_content_delta"
     MESSAGE_CONTENT_DONE = "message_content_done"
+    MESSAGE_REASONING_DELTA = "message_reasoning_delta"
+    MESSAGE_REASONING_DONE = "message_reasoning_done"
     TOOL_CALL_CONTENT = "tool_call_content"
 
 class LLMResponse(BaseModel):
@@ -162,6 +164,26 @@ class LLMResponseMessageDone(LLMResponse):
     role: str
     content: Optional[str] = None
 
+
+class LLMResponseReasoningDelta(LLMResponse):
+    """
+    Model for a single message in LLM output.
+    This model is used to define the structure of messages returned by the LLM.
+    """
+    role: str
+    content: Optional[str] = None
+    delta: Optional[str] = None
+    type: EventType = EventType.MESSAGE_REASONING_DELTA
+
+class LLMResponseReasoningDone(LLMResponse):
+    """
+    Model for a message indicating the end of a response.
+    This model is used to signal that the LLM has finished sending messages.
+    """
+    type: EventType = EventType.MESSAGE_REASONING_DONE
+    role: str
+    content: Optional[str] = None
+
 class LLMResponseToolCall(LLMResponse):
     """
     Model for a tool call in LLM output.
@@ -185,5 +207,9 @@ def parse_llm_response(unparsed_string: str) -> LLMResponse:
         return LLMResponseToolCall.model_validate(data)
     elif data["type"] == EventType.MESSAGE_CONTENT_DONE:
         return LLMResponseMessageDone.model_validate(data)
+    elif data["type"] == EventType.MESSAGE_REASONING_DELTA:
+        return LLMResponseReasoningDelta.model_validate(data)
+    elif data["type"] == EventType.MESSAGE_REASONING_DONE:
+        return LLMResponseReasoningDone.model_validate(data)
 
     raise ValueError(f"Unknown message type: {data['type']}")

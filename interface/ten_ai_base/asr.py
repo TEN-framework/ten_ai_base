@@ -82,11 +82,6 @@ class AsyncASRBaseExtension(AsyncExtension):
     ) -> None:
         await self.audio_frames_queue.put(audio_frame)
 
-    async def on_audio_frame(
-        self, ten_env: AsyncTenEnv, frame: AudioFrame
-    ) -> None:
-        await self.audio_frames_queue.put(frame)
-
     async def on_data(self, ten_env: AsyncTenEnv, data: Data) -> None:
         data_name = data.get_name()
         ten_env.log_debug(f"on_data name: {data_name}")

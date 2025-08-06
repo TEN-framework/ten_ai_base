@@ -227,6 +227,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         if asr_result.final:
             self.uuid = self._get_uuid()  # Reset UUID for the next final turn
 
+
     @final
     async def send_asr_error(
         self, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None

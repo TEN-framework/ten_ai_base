@@ -33,6 +33,7 @@ from .transcription import (
     TurnStatus,
 )
 from .message import ModuleType, ErrorMessage, MetricsMessage
+from .dumper import Dumper
 
 # Specify what should be imported when a user imports * from the
 # ten_ai_base package.
@@ -66,4 +67,5 @@ __all__ = [
     "ModuleType",
     "ErrorMessage",
     "MetricsMessage",
+    "Dumper",
 ]

@@ -1,15 +1,13 @@
 #
-#
-# Agora Real Time Engagement
-# Created by Wei Hu in 2024-08.
-# Copyright (c) 2024 Agora IO. All rights reserved.
-#
+# This file is part of TEN Framework, an open source project.
+# Licensed under the Apache License, Version 2.0.
+# See the LICENSE file for more information.
 #
 import asyncio
 from collections import deque
 from datetime import datetime
 import functools
-from typing import Callable
+from typing import Callable, Optional
 from ten_runtime.async_ten_env import AsyncTenEnv
 import time
 
@@ -151,43 +149,48 @@ def generate_file_name(prefix: str) -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{prefix}_{timestamp}.pcm"
 
-
 class PCMWriter:
-    def __init__(
-        self, prefix: str, write_pcm: bool, buffer_size: int = 1024 * 64
-    ):
-        self.write_pcm = write_pcm
+    def __init__(self, file_path: str, buffer_size: int = 1024 * 64):
+        self.file_name = file_path
         self.buffer = bytearray()
         self.buffer_size = buffer_size
-        self.file_name = generate_file_name(prefix) if write_pcm else None
-        self.loop = asyncio.get_event_loop()
+        self._lock = asyncio.Lock()
+        self._flush_task: Optional[asyncio.Task] = None
 
     async def write(self, data: bytes) -> None:
-        """Accumulate data into the buffer and write to file when necessary."""
-        if not self.write_pcm:
-            return
-
-        self.buffer.extend(data)
-
-        # Write to file if buffer is full
-        if len(self.buffer) >= self.buffer_size:
-            await self._flush()
+        async with self._lock:
+            self.buffer.extend(data)
+            if len(self.buffer) >= self.buffer_size:
+                self._schedule_flush()
 
     async def flush(self) -> None:
-        """Write any remaining data in the buffer to the file."""
-        if self.write_pcm and self.buffer:
-            await self._flush()
+        """Force flush remaining data to file and wait until done."""
+        async with self._lock:
+            self._schedule_flush(force=True)
+        if self._flush_task:
+            await self._flush_task
 
-    async def _flush(self) -> None:
-        """Helper method to write the buffer to the file."""
-        if self.file_name:
-            await self.loop.run_in_executor(
-                None,
-                functools.partial(
-                    write_pcm_to_file, self.buffer[:], self.file_name
-                ),
-            )
+    def _schedule_flush(self, force: bool = False) -> None:
+        if self._flush_task and not self._flush_task.done():
+            return  # A flush is already running
+
+        data_to_write = bytes(self.buffer)
         self.buffer.clear()
+
+        if not data_to_write and not force:
+            return
+
+        loop = asyncio.get_running_loop()
+        self._flush_task = loop.create_task(self._flush(data_to_write))
+
+    async def _flush(self, data: bytes) -> None:
+        if not data:
+            return
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, functools.partial(write_pcm_to_file, data, self.file_name)
+        )
+
 
 
 class TimeHelper:

@@ -1,10 +1,30 @@
+#
+# This file is part of TEN Framework, an open source project.
+# Licensed under the Apache License, Version 2.0.
+# See the LICENSE file for more information.
+#
 from abc import abstractmethod
+from typing import Any, final
 import uuid
 
+from .struct import ASRResult
 from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigModeKeep
 
-from .message import ErrorMessage, ErrorMessageVendorInfo
-from .transcription import UserTranscription
+from .message import (
+    ModuleError,
+    ModuleErrorVendorInfo,
+    ModuleMetricKey,
+    ModuleMetrics,
+    ModuleType,
+)
+from .timeline import AudioTimeline
+from .const import (
+    DATA_IN_ASR_FINALIZE,
+    DATA_OUT_ASR_FINALIZE_END,
+    DATA_OUT_METRICS,
+    PROPERTY_KEY_METADATA,
+    PROPERTY_KEY_SESSION_ID,
+)
 from ten_runtime import (
     AsyncExtension,
     AsyncTenEnv,
@@ -23,87 +43,44 @@ class AsyncASRBaseExtension(AsyncExtension):
         super().__init__(name)
 
         self.stopped = False
-        self.ten_env: AsyncTenEnv = None
-        self.loop = None
+        self.ten_env: AsyncTenEnv = None  # type: ignore
         self.session_id = None
+        self.finalize_id = None
         self.sent_buffer_length = 0
         self.buffered_frames = asyncio.Queue[AudioFrame]()
         self.buffered_frames_size = 0
-        self.uuid = self.get_uuid()  # Unique identifier for the current final turn
         self.audio_frames_queue = asyncio.Queue[AudioFrame]()
+        self.audio_timeline = AudioTimeline()
+        self.audio_actual_send_metrics_task: asyncio.Task[None] | None = None
+        self.uuid = self._get_uuid()  # Unique identifier for the current final turn
+
+        # States for TTFW calculation
+        self.first_audio_time: float | None = (
+            None  # Record the timestamp of the first audio send
+        )
+        self.ttfw_sent = False  # Track if TTFW has been sent
+
+        # States for TTLW calculation
+        self.last_finalize_time: float | None = None
+
+    async def on_init(self, ten_env: AsyncTenEnv) -> None:
+        self.ten_env = ten_env
+        asyncio.create_task(self._audio_frame_consumer())
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
-        self.loop = asyncio.get_event_loop()
-        self.ten_env = ten_env
 
-        self.loop.create_task(self._loop_audio(ten_env))
-        self.loop.create_task(self.start_connection())
+        # Create a task to send audio actual send metrics
+        self.audio_actual_send_metrics_task = asyncio.create_task(
+            self._send_audio_actual_send_metrics_task()
+        )
 
-    async def _loop_audio(self, ten_env: AsyncTenEnv) -> None:
-        """
-        Main loop to handle incoming audio frames asynchronously.
-        This method is called when the extension starts.
-        """
-        ten_env.log_info("Starting audio frame processing loop.")
-        while not self.stopped:
-            try:
-                frame = await self.audio_frames_queue.get()
-                await self._handle_audio_frame(ten_env, frame)
-            except asyncio.CancelledError:
-                ten_env.log_info("Audio frame processing loop cancelled.")
-                break
-            except Exception as e:
-                ten_env.log_error(f"Error in audio frame processing loop: {e}")
+        await self.start_connection()
 
-    async def _handle_audio_frame(self, ten_env: AsyncTenEnv, frame: AudioFrame) -> None:
-        """
-        Handle incoming audio frames asynchronously.
-        This method is called when an audio frame is received.
-        """
-        frame_buf = frame.get_buf()
-        if not frame_buf:
-            ten_env.log_warn("send_frame: empty pcm_frame detected.")
-            return
-
-        if not self.is_connected():
-            ten_env.log_debug("send_frame: service not connected.")
-            buffer_strategy = self.buffer_strategy()
-            if isinstance(buffer_strategy, ASRBufferConfigModeKeep):
-                byte_limit = buffer_strategy.byte_limit
-                while self.buffered_frames_size + len(frame_buf) > byte_limit:
-                    if self.buffered_frames.empty():
-                        break
-                    discard_frame = await self.buffered_frames.get()
-                    self.buffered_frames_size -= len(discard_frame.get_buf())
-                self.buffered_frames.put_nowait(frame)
-                self.buffered_frames_size += len(frame_buf)
-            # return anyway if not connected
-            return
-
-
-        metadata, _ = frame.get_property_to_json("metadata")
-        if metadata:
-            try:
-                metadata_json = json.loads(metadata)
-                self.session_id = metadata_json.get("session_id", self.session_id)
-            except json.JSONDecodeError as e:
-                ten_env.log_warn(f"send_frame: invalid metadata json - {e}")
-
-        if self.buffered_frames.qsize() > 0:
-            ten_env.log_debug(f"send_frame: flushing {self.buffered_frames.qsize()} buffered frames.")
-            while True:
-                try:
-                    buffered_frame = self.buffered_frames.get_nowait()
-                    await self.send_audio(buffered_frame, self.session_id)
-                except asyncio.QueueEmpty:
-                    break
-            self.buffered_frames_size = 0
-
-        success = await self.send_audio(frame, self.session_id)
-
-        if success:
-            self.sent_buffer_length += len(frame_buf)
+    async def on_audio_frame(
+        self, ten_env: AsyncTenEnv, audio_frame: AudioFrame
+    ) -> None:
+        await self.audio_frames_queue.put(audio_frame)
 
     async def on_audio_frame(
         self, ten_env: AsyncTenEnv, frame: AudioFrame
@@ -114,9 +91,18 @@ class AsyncASRBaseExtension(AsyncExtension):
         data_name = data.get_name()
         ten_env.log_debug(f"on_data name: {data_name}")
 
-        if data_name == "finalize":
+        if data_name == DATA_IN_ASR_FINALIZE:
             if not self.is_connected():
-                ten_env.log_warn("finalize: service not connected.")
+                ten_env.log_warn("asr_finalize: service not connected.")
+
+            finalize_id, err = data.get_property_string("finalize_id")
+            if err:
+                ten_env.log_error(f"asr_finalize: failed to get finalize_id: {err}")
+                return
+
+            self.finalize_id = finalize_id
+            self.last_finalize_time = asyncio.get_event_loop().time()
+
             await self.finalize(self.session_id)
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
@@ -126,43 +112,46 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         await self.stop_connection()
 
+        if self.audio_actual_send_metrics_task:
+            self.audio_actual_send_metrics_task.cancel()
+            self.audio_actual_send_metrics_task = None
+
+        await self._send_audio_actual_send_metrics()
+
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
-        cmd_json = cmd.to_json()
-        ten_env.log_info(f"on_cmd json: {cmd_json}")
+        cmd_name = cmd.get_name()
+        ten_env.log_info(f"on_cmd json: {cmd_name}")
 
         cmd_result = CmdResult.create(StatusCode.OK, cmd)
         cmd_result.set_property_string("detail", "success")
         await ten_env.return_result(cmd_result)
 
     @abstractmethod
+    def vendor(self) -> str:
+        """Get the name of the ASR vendor."""
+        raise NotImplementedError("This method should be implemented in subclasses.")
+
+    @abstractmethod
     async def start_connection(self) -> None:
         """Start the connection to the ASR service."""
-        raise NotImplementedError(
-            "This method should be implemented in subclasses."
-        )
+        raise NotImplementedError("This method should be implemented in subclasses.")
 
     @abstractmethod
     def is_connected(self) -> bool:
         """Check if the ASR service is connected."""
-        raise NotImplementedError(
-            "This method should be implemented in subclasses."
-        )
+        raise NotImplementedError("This method should be implemented in subclasses.")
 
     @abstractmethod
     async def stop_connection(self) -> None:
         """Stop the connection to the ASR service."""
-        raise NotImplementedError(
-            "This method should be implemented in subclasses."
-        )
+        raise NotImplementedError("This method should be implemented in subclasses.")
 
     @abstractmethod
     def input_audio_sample_rate(self) -> int:
         """
         Get the input audio sample rate in Hz.
         """
-        raise NotImplementedError(
-            "This method should be implemented in subclasses."
-        )
+        raise NotImplementedError("This method should be implemented in subclasses.")
 
     def input_audio_channels(self) -> int:
         """
@@ -184,64 +173,69 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         return ASRBufferConfigModeDiscard()
 
+    def audio_actual_send_metrics_interval(self) -> int:
+        """
+        Get the interval in seconds for sending audio actual send metrics.
+        """
+        return 5
+
     @abstractmethod
     async def send_audio(self, frame: AudioFrame, session_id: str | None) -> bool:
         """
         Send an audio frame to the ASR service, returning True if successful.
+        Note: The first successful send_audio call will be timestamped for TTFW calculation.
         """
-        raise NotImplementedError(
-            "This method should be implemented in subclasses."
-        )
+        raise NotImplementedError("This method should be implemented in subclasses.")
 
     @abstractmethod
     async def finalize(self, session_id: str | None) -> None:
         """
         Drain the ASR service to ensure all audio frames are processed.
         """
-        raise NotImplementedError(
-            "This method should be implemented in subclasses."
-        )
+        raise NotImplementedError("This method should be implemented in subclasses.")
 
-    async def send_asr_transcription(
-        self, transcription: UserTranscription
-    ) -> None:
+    @final
+    async def send_asr_result(self, asr_result: ASRResult) -> None:
         """
         Send a transcription result as output.
         """
+        asr_result.id = self.uuid
+        if self.session_id is not None:
+            asr_result.metadata[PROPERTY_KEY_SESSION_ID] = self.session_id
+
+        # If this is the first result and there is a timestamp for the first
+        # audio sent, calculate and send TTFW.
+        if not self.ttfw_sent and self.first_audio_time is not None:
+            current_time = asyncio.get_event_loop().time()
+            ttfw = int((current_time - self.first_audio_time) * 1000)
+            await self._send_metrics_ttfw(ttfw)
+            self.ttfw_sent = True
+
+        # If last_finalize_time is not None, calculate and send TTLW.
+        if asr_result.final and self.last_finalize_time is not None:
+            current_time = asyncio.get_event_loop().time()
+            ttlw = int((current_time - self.last_finalize_time) * 1000)
+            await self._send_metrics_ttlw(ttlw)
+            self.last_finalize_time = None
+
         stable_data = Data.create("asr_result")
 
-        model_json = transcription.model_dump()
-        sent_duration = self.calculate_audio_duration(
-            self.sent_buffer_length,
-            self.input_audio_sample_rate(),
-            self.input_audio_channels(),
-            self.input_audio_sample_width(),
-        )
+        model_json = asr_result.model_dump()
 
         stable_data.set_property_from_json(
             None,
-            json.dumps(
-                {
-                    "id": self.uuid,
-                    "text": transcription.text,
-                    "final": transcription.final,
-                    "start_ms": sent_duration + transcription.start_ms,
-                    "duration_ms": transcription.duration_ms,
-                    "language": transcription.language,
-                    "words": model_json.get("words", []),
-                    "metadata": {"session_id": self.session_id},
-                }
-            ),
+            json.dumps(model_json),
         )
 
         await self.ten_env.send_data(stable_data)
 
-        if transcription.final:
-            self.uuid = self.get_uuid()  # Reset UUID for the next final turn
+        if asr_result.final:
+            self.uuid = self._get_uuid()  # Reset UUID for the next final turn
 
 
+    @final
     async def send_asr_error(
-        self, error: ErrorMessage, vendor_info: ErrorMessageVendorInfo | None = None
+        self, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None
     ) -> None:
         """
         Send an error message related to ASR processing.
@@ -260,60 +254,209 @@ class AsyncASRBaseExtension(AsyncExtension):
             None,
             json.dumps(
                 {
-                    "id": "user.transcription",
+                    "id": self.uuid,
+                    "module": ModuleType.ASR,
                     "code": error.code,
                     "message": error.message,
                     "vendor_info": vendorInfo,
-                    "metadata": {"session_id": self.session_id},
+                    "metadata": (
+                        {}
+                        if self.session_id is None
+                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
+                    ),
                 }
             ),
         )
 
         await self.ten_env.send_data(error_data)
 
-    async def send_asr_finalize_end(self, latency_ms: int) -> None:
+    @final
+    async def send_asr_finalize_end(self) -> None:
         """
         Send a signal that the ASR service has finished processing all audio frames.
         """
-        drain_data = Data.create("asr_finalize_end")
+        drain_data = Data.create(DATA_OUT_ASR_FINALIZE_END)
         drain_data.set_property_from_json(
             None,
             json.dumps(
                 {
-                    "id": "user.transcription",
-                    "latency_ms": latency_ms,
-                    "metadata": {"session_id": self.session_id},
+                    "finalize_id": self.finalize_id,
+                    "metadata": (
+                        {}
+                        if self.session_id is None
+                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
+                    ),
                 }
             ),
         )
 
         await self.ten_env.send_data(drain_data)
 
-    def calculate_audio_duration(
-        self,
-        bytes_length: int,
-        sample_rate: int,
-        channels: int = 1,
-        sample_width: int = 2,
-    ) -> int:
+    @final
+    async def send_connect_delay_metrics(self, connect_delay: int) -> None:
         """
-        Calculate audio duration in milliseconds.
-
-        Parameters:
-        - bytes_length: Length of the audio data in bytes
-        - sample_rate: Sample rate in Hz (e.g., 16000)
-        - channels: Number of audio channels (default: 1 for mono)
-        - sample_width: Number of bytes per sample (default: 2 for 16-bit PCM)
-
-        Returns:
-        - Duration in milliseconds
+        Send metrics for time to connect to ASR server.
         """
-        bytes_per_second = sample_rate * channels * sample_width
-        return int(bytes_length / bytes_per_second * 1000)
+        metrics = ModuleMetrics(
+            module=ModuleType.ASR,
+            vendor=self.vendor(),
+            metrics={ModuleMetricKey.ASR_CONNECT_DELAY: connect_delay},
+        )
+        await self._send_asr_metrics(metrics)
 
+    @final
+    async def send_vendor_metrics(self, vendor_metrics: dict[str, Any]) -> None:
+        """
+        Send vendor specific metrics.
+        """
+        metrics = ModuleMetrics(
+            module=ModuleType.ASR,
+            vendor=self.vendor(),
+            metrics={ModuleMetricKey.ASR_VENDOR_METRICS: vendor_metrics},
+        )
+        await self._send_asr_metrics(metrics)
 
-    def get_uuid(self) -> str:
+    async def _send_audio_actual_send_metrics(self) -> None:
+        """
+        Send audio actual send metrics.
+        """
+        actual_send = (
+            self.audio_timeline.total_user_audio_duration
+            + self.audio_timeline.total_silence_audio_duration
+        )
+
+        metrics = ModuleMetrics(
+            module=ModuleType.ASR,
+            vendor=self.vendor(),
+            metrics={ModuleMetricKey.ASR_ACTUAL_SEND: actual_send},
+        )
+        await self._send_asr_metrics(metrics)
+
+    async def _send_asr_metrics(self, metrics: ModuleMetrics) -> None:
+        """
+        Send metrics related to the ASR module.
+        """
+        metrics_data = Data.create(DATA_OUT_METRICS)
+
+        metrics_data.set_property_from_json(
+            None,
+            json.dumps(
+                {
+                    "id": self.uuid,
+                    "module": metrics.module,
+                    "vendor": metrics.vendor,
+                    "metrics": metrics.metrics,
+                    "metadata": (
+                        {}
+                        if self.session_id is None
+                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
+                    ),
+                }
+            ),
+        )
+
+        await self.ten_env.send_data(metrics_data)
+
+    async def _send_metrics_ttfw(self, ttfw: int) -> None:
+        """
+        Send metrics for time to first word.
+        """
+        metrics = ModuleMetrics(
+            module=ModuleType.ASR,
+            vendor=self.vendor(),
+            metrics={ModuleMetricKey.ASR_TTFW: ttfw},
+        )
+
+        await self._send_asr_metrics(metrics)
+
+    async def _send_metrics_ttlw(self, ttlw: int) -> None:
+        """
+        Send metrics for time to last word.
+        """
+        metrics = ModuleMetrics(
+            module=ModuleType.ASR,
+            vendor=self.vendor(),
+            metrics={ModuleMetricKey.ASR_TTLW: ttlw},
+        )
+
+        await self._send_asr_metrics(metrics)
+
+    def _get_uuid(self) -> str:
         """
         Get a unique identifier
         """
         return uuid.uuid4().hex
+
+    async def _handle_audio_frame(
+        self, ten_env: AsyncTenEnv, audio_frame: AudioFrame
+    ) -> None:
+        frame_buf = audio_frame.get_buf()
+        if not frame_buf:
+            ten_env.log_warn("send_frame: empty pcm_frame detected.")
+            return
+
+        if not self.is_connected():
+            ten_env.log_verbose("send_frame: service not connected.")
+            buffer_strategy = self.buffer_strategy()
+            if isinstance(buffer_strategy, ASRBufferConfigModeKeep):
+                byte_limit = buffer_strategy.byte_limit
+                while self.buffered_frames_size + len(frame_buf) > byte_limit:
+                    if self.buffered_frames.empty():
+                        break
+                    discard_frame = await self.buffered_frames.get()
+                    self.buffered_frames_size -= len(discard_frame.get_buf())
+                self.buffered_frames.put_nowait(audio_frame)
+                self.buffered_frames_size += len(frame_buf)
+            # return anyway if not connected
+            return
+
+        metadata, _ = audio_frame.get_property_to_json(PROPERTY_KEY_METADATA)
+        if metadata:
+            try:
+                metadata_json = json.loads(metadata)
+                self.session_id = metadata_json.get(
+                    PROPERTY_KEY_SESSION_ID, self.session_id
+                )
+            except json.JSONDecodeError as e:
+                ten_env.log_warn(f"send_frame: invalid metadata json - {e}")
+
+        if self.buffered_frames.qsize() > 0:
+            ten_env.log_debug(
+                f"send_frame: flushing {self.buffered_frames.qsize()} buffered frames."
+            )
+            while True:
+                try:
+                    buffered_frame = self.buffered_frames.get_nowait()
+                    await self.send_audio(buffered_frame, self.session_id)
+                except asyncio.QueueEmpty:
+                    break
+            self.buffered_frames_size = 0
+
+        success = await self.send_audio(audio_frame, self.session_id)
+
+        if success:
+            self.sent_buffer_length += len(frame_buf)
+
+            # Record the timestamp of the first successful send_audio call for TTFW calculation.
+            if self.first_audio_time is None:
+                self.first_audio_time = asyncio.get_event_loop().time()
+
+    async def _audio_frame_consumer(self) -> None:
+        while not self.stopped:
+            try:
+                audio_frame = await self.audio_frames_queue.get()
+                await self._handle_audio_frame(self.ten_env, audio_frame)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.ten_env.log_error(f"Error consuming audio frame: {e}")
+
+    async def _send_audio_actual_send_metrics_task(self) -> None:
+        """
+        Send audio actual send metrics periodically.
+        """
+        interval = max(1, self.audio_actual_send_metrics_interval())
+
+        while not self.stopped:
+            await asyncio.sleep(interval)
+            await self._send_audio_actual_send_metrics()

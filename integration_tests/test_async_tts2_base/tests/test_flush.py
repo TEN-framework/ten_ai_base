@@ -33,8 +33,14 @@ class ExtensionTesterFlush(AsyncExtensionTester):
         text_data.set_property_string("text", "How are you today?")
         await ten_env.send_data(text_data)
 
-        flush_cmd = Cmd.create("flush")
-        asyncio.create_task(ten_env.send_cmd(flush_cmd))
+
+        await asyncio.sleep(1)  # Simulate async initialization delay
+
+        flush_data = Data.create("tts_flush")
+        flush_data.set_property_from_json(
+            None, json.dumps({"flush_id":"xxxx","metadata": {"session_id": "test_session"}})
+        )
+        await ten_env.send_data(flush_data)
 
     async def on_audio_frame(
         self, ten_env: AsyncTenEnvTester, audio_frame: AudioFrame
@@ -62,16 +68,26 @@ class ExtensionTesterFlush(AsyncExtensionTester):
         ten_env.log_debug(f"on_cmd: {cmd_name}")
         await ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
 
-        if cmd_name != "flush":
+        if cmd_name != "tts_flush":
             return
 
         # received flush cmd
         ten_env.stop_test()
+
+    async def on_data(self, ten_env: AsyncTenEnvTester, data: Data) -> None:
+        data_name = data.get_name()
+        ten_env.log_debug(f"on_data for tester: {data_name}")
+
+        if data_name == "tts_flush_end":
+            # received flush result
+            ten_env.log_info("Flush completed successfully.")
+            ten_env.stop_test()
+
 
 
 def test_flush():
     # TODO: fix later
 
     tester = ExtensionTesterFlush(16000)
-    tester.set_test_mode_single("test_async_tts_base")
+    tester.set_test_mode_single("test_async_tts2_base")
     tester.run()

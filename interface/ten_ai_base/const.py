@@ -1,3 +1,8 @@
+#
+# This file is part of TEN Framework, an open source project.
+# Licensed under the Apache License, Version 2.0.
+# See the LICENSE file for more information.
+#
 CMD_TOOL_REGISTER = "tool_register"
 CMD_TOOL_CALL = "tool_call"
 CMD_PROPERTY_TOOL = "tool"
@@ -23,3 +28,10 @@ DATA_INPUT_NAME = "text_data"
 CONTENT_DATA_INPUT_NAME = "content_data"
 
 AUDIO_FRAME_OUTPUT_NAME = "pcm_frame"
+
+DATA_IN_ASR_FINALIZE = "asr_finalize"
+DATA_OUT_ASR_FINALIZE_END = "asr_finalize_end"
+DATA_OUT_METRICS = "metrics"
+
+PROPERTY_KEY_METADATA = "metadata"
+PROPERTY_KEY_SESSION_ID = "session_id"

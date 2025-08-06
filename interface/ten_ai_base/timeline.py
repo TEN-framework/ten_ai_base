@@ -15,6 +15,8 @@ class AudioTimeline:
     def __init__(self):
         # Store timeline event list, each event is a tuple of (type, duration)
         self.timeline: list[tuple[AudioTimelineEventType, int]] = []
+        self.total_user_audio_duration = 0
+        self.total_silence_audio_duration = 0
 
     def add_user_audio(self, duration_ms: int):
         """Add user audio
@@ -33,6 +35,8 @@ class AudioTimeline:
             )
         else:
             self.timeline.append((AudioTimelineEventType.USER_AUDIO, duration_ms))
+
+        self.total_user_audio_duration += duration_ms
 
     def add_silence_audio(self, duration_ms: int):
         """Add silence audio
@@ -54,6 +58,8 @@ class AudioTimeline:
             )
         else:
             self.timeline.append((AudioTimelineEventType.SILENCE_AUDIO, duration_ms))
+
+        self.total_silence_audio_duration += duration_ms
 
     def get_audio_duration_before_time(self, time_ms: int) -> int:
         total_duration = 0

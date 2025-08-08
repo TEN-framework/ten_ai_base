@@ -1,10 +1,6 @@
 {
     "property": {
         "properties": {
-            "params": {
-                "type": "object",
-                "properties": {}
-            },
             "dump": {
                 "type": "bool"
             },

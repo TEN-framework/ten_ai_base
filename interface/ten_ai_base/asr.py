@@ -253,7 +253,7 @@ class AsyncASRBaseExtension(AsyncExtension):
                     "module": ModuleType.ASR,
                     "code": error.code,
                     "message": error.message,
-                    "vendor_info": vendorInfo,
+                    "vendor_info": vendorInfo or {},
                     "metadata": (
                         {}
                         if self.session_id is None

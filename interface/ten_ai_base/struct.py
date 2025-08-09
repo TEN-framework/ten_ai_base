@@ -215,3 +215,24 @@ def parse_llm_response(unparsed_string: str) -> LLMResponse:
 
     raise ValueError(f"Unknown message type: {data['type']}")
 
+
+class MLLMRequestTranscript(BaseModel):
+    """
+    Model for MLLM request transcript.
+    This model is used to define the structure of the transcript data for MLLM requests.
+    """
+    content: Optional[str] = None
+    delta: Optional[str] = None
+    final: bool = False
+    metadata: dict[str, Any] = {}
+
+
+class MLLMResponseTranscript(BaseModel):
+    """
+    Model for MLLM response transcript.
+    This model is used to define the structure of the transcript data for MLLM responses.
+    """
+    content: Optional[str] = None
+    delta: Optional[str] = None
+    final: bool = False
+    metadata: dict[str, Any] = {}

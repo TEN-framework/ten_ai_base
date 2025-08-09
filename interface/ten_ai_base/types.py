@@ -151,3 +151,13 @@ class ASRBufferConfigModeDiscard(BaseModel):
     mode: Literal["discard"] = "discard"
 
 ASRBufferConfig: TypeAlias = Union[ASRBufferConfigModeKeep, ASRBufferConfigModeDiscard]
+
+
+class MLLMBufferConfigModeKeep(BaseModel):
+    mode: Literal["keep"] = "keep"
+    byte_limit: int = 10
+
+class MLLMBufferConfigModeDiscard(BaseModel):
+    mode: Literal["discard"] = "discard"
+
+MLLMBufferConfig: TypeAlias = Union[MLLMBufferConfigModeKeep, MLLMBufferConfigModeDiscard]

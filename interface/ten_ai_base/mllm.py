@@ -8,9 +8,9 @@ import traceback
 from typing import final
 import uuid
 
-from .struct import MLLMRequestTranscript, MLLMResponseTranscript
+from .struct import MLLMClientCreateResponse, MLLMClientMessageItem, MLLMClientRegisterTool, MLLMClientSendMessageItem, MLLMClientSetMessageContext, MLLMServerInputTranscript, MLLMServerOutputTranscript, MLLMServerSessionReady, MLLMServerInterrupt
 
-from .types import MLLMBufferConfig, MLLMBufferConfigModeDiscard, MLLMBufferConfigModeKeep
+from .types import LLMToolMetadata, MLLMBufferConfig, MLLMBufferConfigModeDiscard, MLLMBufferConfigModeKeep
 
 from .message import (
     ModuleError,
@@ -34,9 +34,14 @@ from ten_runtime import (
 import asyncio
 import json
 
-
-DATA_MLLM_REQUEST_TRANSCRIPT = "mllm_request_transcript"
-DATA_MLLM_RESPONSE_TRANSCRIPT = "mllm_response_transcript"
+DATA_MLLM_OUT_SESSION_READY = "mllm_server_session_ready"
+DATA_MLLM_OUT_INTERRUPTED = "mllm_server_interrupted"
+DATA_MLLM_OUT_REQUEST_TRANSCRIPT = "mllm_server_input_transcript"
+DATA_MLLM_OUT_RESPONSE_TRANSCRIPT = "mllm_server_output_transcript"
+DATA_MLLM_IN_SET_MESSAGE_CONTEXT = "mllm_client_set_message_context"
+DATA_MLLM_IN_SEND_MESSAGE_ITEM = "mllm_client_request_message_item"
+DATA_MLLM_IN_CREATE_RESPONSE = "mllm_client_request_create_response"
+DATA_MLLM_IN_REGISTER_TOOL = "mllm_client_request_register_tool"
 
 
 class AsyncMLLMBaseExtension(AsyncExtension):
@@ -52,6 +57,7 @@ class AsyncMLLMBaseExtension(AsyncExtension):
         self.audio_frames_queue = asyncio.Queue[AudioFrame]()
         self.uuid = self._get_uuid()  # Unique identifier for the current final turn
         self.leftover_bytes = b""
+        self.message_context: list[MLLMClientMessageItem] = []  # Context for the current message
 
         # States for TTFW calculation
         self.first_audio_time: float | None = (
@@ -74,6 +80,23 @@ class AsyncMLLMBaseExtension(AsyncExtension):
     async def on_data(self, ten_env: AsyncTenEnv, data: Data) -> None:
         data_name = data.get_name()
         ten_env.log_debug(f"on_data name: {data_name}")
+        if data_name == DATA_MLLM_IN_SEND_MESSAGE_ITEM:
+            send_message, _ = data.get_property_to_json(None)
+            message_item = MLLMClientSendMessageItem.model_validate_json(send_message)
+            await self.send_client_message_item(message_item.message, self.session_id)
+        elif data_name == DATA_MLLM_IN_CREATE_RESPONSE:
+            create_response, _ = data.get_property_to_json(None)
+            create_response = MLLMClientCreateResponse.model_validate_json(create_response)
+            await self.send_client_create_response(self.session_id)
+        elif data_name == DATA_MLLM_IN_SET_MESSAGE_CONTEXT:
+            set_message_context, _ = data.get_property_to_json(None)
+            messages = MLLMClientSetMessageContext.model_validate_json(set_message_context).messages
+            self.message_context = messages
+        elif data_name == DATA_MLLM_IN_REGISTER_TOOL:
+            register_tool_json, _ = data.get_property_to_json(None)
+            register_tool = MLLMClientRegisterTool.model_validate_json(register_tool_json)
+            await self.send_client_register_tool(register_tool.tool)
+
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_stop")
@@ -108,6 +131,36 @@ class AsyncMLLMBaseExtension(AsyncExtension):
     @abstractmethod
     async def stop_connection(self) -> None:
         """Stop the connection to the MLLM service."""
+        raise NotImplementedError("This method should be implemented in subclasses.")
+
+    @abstractmethod
+    async def send_client_message_item(
+        self, item: MLLMClientMessageItem, session_id: str | None = None
+    ) -> None:
+        """
+        Send a message item to the MLLM service.
+        This method is used to send user or assistant messages.
+        """
+        raise NotImplementedError("This method should be implemented in subclasses.")
+
+    @abstractmethod
+    async def send_client_create_response(
+        self, session_id: str | None = None
+    ) -> None:
+        """
+        Send a create response to the MLLM service.
+        This method is used to trigger MLLM to generate a response.
+        """
+        raise NotImplementedError("This method should be implemented in subclasses.")
+
+    @abstractmethod
+    async def send_client_register_tool(
+        self, tools: LLMToolMetadata
+    ) -> None:
+        """
+        Register tools with the MLLM service.
+        This method is used to register tools that can be called by the LLM.
+        """
         raise NotImplementedError("This method should be implemented in subclasses.")
 
     @abstractmethod
@@ -168,14 +221,38 @@ class AsyncMLLMBaseExtension(AsyncExtension):
         raise NotImplementedError("This method should be implemented in subclasses.")
 
     @final
-    async def send_mllm_request_transcript(self, request_transcript: MLLMRequestTranscript) -> None:
+    async def send_server_session_ready(self, session: MLLMServerSessionReady) -> None:
+        """
+        Send a session ready event to the MLLM server.
+        This is typically used to notify that the session is ready for processing.
+        """
+        if self.session_id is not None:
+            session.metadata[PROPERTY_KEY_SESSION_ID] = self.session_id
+        data = Data.create(DATA_MLLM_OUT_SESSION_READY)
+        data.set_property_from_json("", session.model_dump_json())
+        await self.ten_env.send_data(data)
+
+    @final
+    async def send_server_interrupted(self, sos: MLLMServerInterrupt) -> None:
+        """
+        Send a start of speech event to the MLLM server.
+        This is typically used to notify that the user has started speaking.
+        """
+        if self.session_id is not None:
+            sos.metadata[PROPERTY_KEY_SESSION_ID] = self.session_id
+        data = Data.create(DATA_MLLM_OUT_INTERRUPTED)
+        data.set_property_from_json("", sos.model_dump_json())
+        await self.ten_env.send_data(data)
+
+    @final
+    async def send_server_input_transcript(self, request_transcript: MLLMServerInputTranscript) -> None:
         """
         Send a transcription result as output.
         """
         if self.session_id is not None:
             request_transcript.metadata[PROPERTY_KEY_SESSION_ID] = self.session_id
 
-        stable_data = Data.create(DATA_MLLM_REQUEST_TRANSCRIPT)
+        stable_data = Data.create(DATA_MLLM_OUT_REQUEST_TRANSCRIPT)
 
         model_json = request_transcript.model_dump()
 
@@ -190,7 +267,7 @@ class AsyncMLLMBaseExtension(AsyncExtension):
             self.uuid = self._get_uuid()  # Reset UUID for the next final turn
 
 
-    async def send_mllm_response_audio_data(
+    async def send_server_output_audio_data(
         self, audio_data: bytes
     ) -> None:
         """End sending audio out."""
@@ -235,10 +312,12 @@ class AsyncMLLMBaseExtension(AsyncExtension):
                 f"error send audio frame, {traceback.format_exc()}"
             )
 
-    async def send_mllm_response_text(
-        self, t: MLLMResponseTranscript
+    async def send_server_output_text(
+        self, t: MLLMServerOutputTranscript
     ) -> None:
-        data = Data.create(DATA_MLLM_RESPONSE_TRANSCRIPT)
+        if self.session_id is not None:
+            t.metadata[PROPERTY_KEY_SESSION_ID] = self.session_id
+        data = Data.create(DATA_MLLM_OUT_RESPONSE_TRANSCRIPT)
         data.set_property_from_json("", t.model_dump_json())
         await self.ten_env.send_data(data)
 

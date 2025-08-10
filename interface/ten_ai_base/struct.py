@@ -216,7 +216,59 @@ def parse_llm_response(unparsed_string: str) -> LLMResponse:
     raise ValueError(f"Unknown message type: {data['type']}")
 
 
-class MLLMRequestTranscript(BaseModel):
+"""
+===========MLLM Input and Output Models================
+"""
+class MLLMClientMessageItem(BaseModel):
+    """
+    Model for MLLM messages.
+    This model is used to define the structure of messages sent to and received from MLLM.
+    """
+    role: Literal["user", "assistant"]
+    content: str
+
+class MLLMClientSendMessageItem(BaseModel):
+    """
+    Model for sending messages to MLLM.
+    This model is used to define the structure of messages sent to MLLM.
+    """
+    message: MLLMClientMessageItem
+
+class MLLMClientSetMessageContext(BaseModel):
+    """
+    Model for setting the context messages in MLLM.
+    This model is used to define the structure of context messages sent to MLLM.
+    """
+    messages: list[MLLMClientMessageItem] = []
+
+class MLLMClientCreateResponse(BaseModel):
+    """
+    Model for creating a response in MLLM.
+    This model is used to define the structure of the response creation request sent to MLLM.
+    """
+    pass
+
+class MLLMClientRegisterTool(BaseModel):
+    """
+    Model for registering tools with MLLM.
+    This model is used to define the structure of tool registration data.
+    """
+    tool: LLMToolMetadata
+
+class MLLMServerSessionReady(BaseModel):
+    """
+    Model for MLLM server session ready event.
+    This model is used to define the structure of the session ready event sent by the MLLM server.
+    """
+    metadata: dict[str, Any] = {}
+
+class MLLMServerInterrupt(BaseModel):
+    """ Model for MLLM server start of speech event.
+    This model is used to define the structure of the start of speech event sent by the MLLM server.
+    """
+    metadata: dict[str, Any] = {}
+
+class MLLMServerInputTranscript(BaseModel):
     """
     Model for MLLM request transcript.
     This model is used to define the structure of the transcript data for MLLM requests.
@@ -227,7 +279,7 @@ class MLLMRequestTranscript(BaseModel):
     metadata: dict[str, Any] = {}
 
 
-class MLLMResponseTranscript(BaseModel):
+class MLLMServerOutputTranscript(BaseModel):
     """
     Model for MLLM response transcript.
     This model is used to define the structure of the transcript data for MLLM responses.

@@ -8,7 +8,7 @@ import traceback
 from typing import final
 import uuid
 
-from .struct import MLLMClientCreateResponse, MLLMClientMessageItem, MLLMClientRegisterTool, MLLMClientSendMessageItem, MLLMClientSetMessageContext, MLLMServerInputTranscript, MLLMServerOutputTranscript, MLLMServerSessionReady, MLLMServerInterrupt
+from .struct import MLLMClientCreateResponse, MLLMClientFunctionCallOutput, MLLMClientMessageItem, MLLMClientRegisterTool, MLLMClientSendMessageItem, MLLMClientSetMessageContext, MLLMServerFunctionCall, MLLMServerInputTranscript, MLLMServerOutputTranscript, MLLMServerSessionReady, MLLMServerInterrupt
 
 from .types import LLMToolMetadata, MLLMBufferConfig, MLLMBufferConfigModeDiscard, MLLMBufferConfigModeKeep
 
@@ -38,10 +38,12 @@ DATA_MLLM_OUT_SESSION_READY = "mllm_server_session_ready"
 DATA_MLLM_OUT_INTERRUPTED = "mllm_server_interrupted"
 DATA_MLLM_OUT_REQUEST_TRANSCRIPT = "mllm_server_input_transcript"
 DATA_MLLM_OUT_RESPONSE_TRANSCRIPT = "mllm_server_output_transcript"
+DATA_MLLM_OUT_FUNCTION_CALL = "mllm_server_function_call"
 DATA_MLLM_IN_SET_MESSAGE_CONTEXT = "mllm_client_set_message_context"
 DATA_MLLM_IN_SEND_MESSAGE_ITEM = "mllm_client_request_message_item"
 DATA_MLLM_IN_CREATE_RESPONSE = "mllm_client_request_create_response"
 DATA_MLLM_IN_REGISTER_TOOL = "mllm_client_request_register_tool"
+DATA_MLLM_IN_FUNCTION_CALL_OUTPUT = "mllm_client_function_call_output"
 
 
 class AsyncMLLMBaseExtension(AsyncExtension):
@@ -96,6 +98,10 @@ class AsyncMLLMBaseExtension(AsyncExtension):
             register_tool_json, _ = data.get_property_to_json(None)
             register_tool = MLLMClientRegisterTool.model_validate_json(register_tool_json)
             await self.send_client_register_tool(register_tool.tool)
+        elif data_name == DATA_MLLM_IN_FUNCTION_CALL_OUTPUT:
+            function_call_output_json, _ = data.get_property_to_json(None)
+            function_call_output = MLLMClientFunctionCallOutput.model_validate_json(function_call_output_json)
+            await self.send_client_function_call_output(function_call_output)
 
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
@@ -160,6 +166,16 @@ class AsyncMLLMBaseExtension(AsyncExtension):
         """
         Register tools with the MLLM service.
         This method is used to register tools that can be called by the LLM.
+        """
+        raise NotImplementedError("This method should be implemented in subclasses.")
+
+    @abstractmethod
+    async def send_client_function_call_output(
+        self, function_call_output: MLLMClientFunctionCallOutput
+    ) -> None:
+        """
+        Send a function call output to the MLLM service.
+        This method is used to send the result of a function call made by the LLM.
         """
         raise NotImplementedError("This method should be implemented in subclasses.")
 
@@ -312,6 +328,7 @@ class AsyncMLLMBaseExtension(AsyncExtension):
                 f"error send audio frame, {traceback.format_exc()}"
             )
 
+    @final
     async def send_server_output_text(
         self, t: MLLMServerOutputTranscript
     ) -> None:
@@ -321,6 +338,19 @@ class AsyncMLLMBaseExtension(AsyncExtension):
         data.set_property_from_json("", t.model_dump_json())
         await self.ten_env.send_data(data)
 
+    @final
+    async def send_server_function_call(
+        self, function_call: MLLMServerFunctionCall
+    ) -> None:
+        """
+        Send a function call event to the MLLM server.
+        This is typically used to notify that a function call has been made by the MLLM server.
+        """
+        if self.session_id is not None:
+            function_call.metadata[PROPERTY_KEY_SESSION_ID] = self.session_id
+        data = Data.create(DATA_MLLM_OUT_FUNCTION_CALL)
+        data.set_property_from_json("", function_call.model_dump_json())
+        await self.ten_env.send_data(data)
 
     @final
     async def send_mllm_error(

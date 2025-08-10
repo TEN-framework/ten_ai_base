@@ -255,6 +255,14 @@ class MLLMClientRegisterTool(BaseModel):
     """
     tool: LLMToolMetadata
 
+class MLLMClientFunctionCallOutput(BaseModel):
+    """
+    Model for MLLM function call output.
+    This model is used to define the structure of function call outputs sent by the MLLM client.
+    """
+    call_id: str
+    output: str
+
 class MLLMServerSessionReady(BaseModel):
     """
     Model for MLLM server session ready event.
@@ -287,4 +295,14 @@ class MLLMServerOutputTranscript(BaseModel):
     content: Optional[str] = None
     delta: Optional[str] = None
     final: bool = False
+    metadata: dict[str, Any] = {}
+
+class MLLMServerFunctionCall(BaseModel):
+    """
+    Model for MLLM server function call.
+    This model is used to define the structure of function calls made by the MLLM server.
+    """
+    call_id: str
+    name: str
+    arguments: str
     metadata: dict[str, Any] = {}

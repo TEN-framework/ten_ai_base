@@ -281,8 +281,8 @@ class MLLMServerInputTranscript(BaseModel):
     Model for MLLM request transcript.
     This model is used to define the structure of the transcript data for MLLM requests.
     """
-    content: Optional[str] = None
-    delta: Optional[str] = None
+    content: str = ""
+    delta: str = ""
     final: bool = False
     metadata: dict[str, Any] = {}
 
@@ -292,8 +292,8 @@ class MLLMServerOutputTranscript(BaseModel):
     Model for MLLM response transcript.
     This model is used to define the structure of the transcript data for MLLM responses.
     """
-    content: Optional[str] = None
-    delta: Optional[str] = None
+    content: str = ""
+    delta: str = ""
     final: bool = False
     metadata: dict[str, Any] = {}
 

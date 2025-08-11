@@ -44,22 +44,137 @@
         }
     ],
     "data_in": [
+        {
+            "name": "mllm_client_set_message_context",
+            "property": {
+                "properties": {}
+            }
+        },
+        {
+            "name": "mllm_client_request_message_item",
+            "property": {
+                "properties": {}
+            }
+        },
+        {
+            "name": "mllm_client_request_create_response",
+            "property": {
+                "properties": {}
+            }
+        },
+        {
+            "name": "mllm_client_request_register_tool",
+            "property": {
+                "properties": {}
+            }
+        },
+        {
+            "name": "mllm_client_function_call_output",
+            "property": {
+                "properties": {}
+            }
+        }
     ],
     "data_out": [
         {
-            "name": "asr_result",
+            "name": "mllm_server_session_ready",
             "property": {
                 "properties": {
-                    "id": {
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "mllm_server_interrupted",
+            "property": {
+                "properties": {
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "mllm_server_input_transcript",
+            "property": {
+                "properties": {
+                    "delta": {
                         "type": "string"
                     },
-                    "text": {
+                    "content": {
                         "type": "string"
                     },
                     "final": {
                         "type": "bool"
                     },
-                    "language": {
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "required": [
+                "delta",
+                "content",
+                "final"
+            ]
+        },
+        {
+            "name": "mllm_server_output_transcript",
+            "property": {
+                "properties": {
+                    "delta": {
+                        "type": "string"
+                    },
+                    "content": {
+                        "type": "string"
+                    },
+                    "final": {
+                        "type": "bool"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "required": [
+                "delta",
+                "content",
+                "final"
+            ]
+        },
+        {
+            "name": "mllm_server_function_call",
+            "property": {
+                "properties": {
+                    "call_id": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "arguments": {
                         "type": "string"
                     },
                     "metadata": {
@@ -73,10 +188,9 @@
                 }
             },
             "required": [
-                "id",
-                "text",
-                "final",
-                "language"
+                "call_id",
+                "name",
+                "arguments"
             ]
         },
         {

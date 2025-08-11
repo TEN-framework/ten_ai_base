@@ -12,6 +12,7 @@ from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigM
 
 from .message import (
     ModuleError,
+    ModuleErrorCode,
     ModuleErrorVendorInfo,
     ModuleMetricKey,
     ModuleMetrics,
@@ -215,7 +216,7 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         stable_data = Data.create("asr_result")
 
-        model_json = asr_result.model_dump()
+        model_json = asr_result.model_dump(exclude_none=True)
 
         stable_data.set_property_from_json(
             None,
@@ -227,40 +228,38 @@ class AsyncASRBaseExtension(AsyncExtension):
         if asr_result.final:
             self.uuid = self._get_uuid()  # Reset UUID for the next final turn
 
-
     @final
     async def send_asr_error(
-        self, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None
+        self,
+        code: ModuleErrorCode,
+        message: str,
+        vendor_info: ModuleErrorVendorInfo | None = None,
     ) -> None:
         """
         Send an error message related to ASR processing.
         """
         error_data = Data.create("error")
 
-        vendorInfo = None
+        module_error = ModuleError(
+            id=self.uuid,
+            module=ModuleType.ASR,
+            code=code.value,
+            message=message,
+            metadata={
+                PROPERTY_KEY_SESSION_ID: self.session_id or "",
+            },
+        )
+
         if vendor_info:
-            vendorInfo = {
-                "vendor": vendor_info.vendor,
-                "code": vendor_info.code,
-                "message": vendor_info.message,
-            }
+            module_error.vendor_info = ModuleErrorVendorInfo(
+                vendor=self.vendor(),
+                code=vendor_info.code,
+                message=vendor_info.message,
+            )
 
         error_data.set_property_from_json(
             None,
-            json.dumps(
-                {
-                    "id": self.uuid,
-                    "module": ModuleType.ASR,
-                    "code": error.code,
-                    "message": error.message,
-                    "vendor_info": vendorInfo or {},
-                    "metadata": (
-                        {}
-                        if self.session_id is None
-                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
-                    ),
-                }
-            ),
+            module_error.model_dump_json(exclude_none=True),
         )
 
         await self.ten_env.send_data(error_data)

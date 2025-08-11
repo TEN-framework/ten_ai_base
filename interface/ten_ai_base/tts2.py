@@ -118,7 +118,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             flush_result.set_property_from_json(
                 None, json.dumps({
                     "flush_id": t.flush_id,
-                    "metadata": t.model_dump_json(),
+                    "metadata": t.metadata,
                 })
             )
             await ten_env.send_data(flush_result)

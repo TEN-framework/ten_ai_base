@@ -156,7 +156,7 @@ class AsyncASRBaseExtension(
 
     def dump_file_name(self) -> str:
         """Return the base dump filename."""
-        return f"{self.name}_out.pcm"
+        return f"{self.vendor()}_{self.name}_out.pcm"
 
     @abstractmethod
     async def start_connection(self) -> None:

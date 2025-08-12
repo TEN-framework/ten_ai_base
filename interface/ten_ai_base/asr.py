@@ -3,28 +3,15 @@
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file for more information.
 #
+"""ASR base class: connection, buffering, metrics and result helpers."""
 from abc import abstractmethod
+import asyncio
+from functools import wraps
+import json
+import os
 from typing import Any, final
 import uuid
 
-from .struct import ASRResult
-from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigModeKeep
-
-from .message import (
-    ModuleError,
-    ModuleErrorVendorInfo,
-    ModuleMetricKey,
-    ModuleMetrics,
-    ModuleType,
-)
-from .timeline import AudioTimeline
-from .const import (
-    DATA_IN_ASR_FINALIZE,
-    DATA_OUT_ASR_FINALIZE_END,
-    DATA_OUT_METRICS,
-    PROPERTY_KEY_METADATA,
-    PROPERTY_KEY_SESSION_ID,
-)
 from ten_runtime import (
     AsyncExtension,
     AsyncTenEnv,
@@ -34,11 +21,35 @@ from ten_runtime import (
     StatusCode,
     CmdResult,
 )
-import asyncio
-import json
+
+from .const import (
+    DATA_IN_ASR_FINALIZE,
+    DATA_OUT_ASR_FINALIZE_END,
+    DATA_OUT_METRICS,
+    PROPERTY_KEY_DUMP,
+    PROPERTY_KEY_DUMP_PATH,
+    PROPERTY_KEY_METADATA,
+    PROPERTY_KEY_SESSION_ID,
+)
+from .dumper import Dumper
+from .message import (
+    ModuleError,
+    ModuleErrorCode,
+    ModuleErrorVendorInfo,
+    ModuleMetricKey,
+    ModuleMetrics,
+    ModuleType,
+)
+from .struct import ASRResult
+from .timeline import AudioTimeline
+from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigModeKeep
 
 
-class AsyncASRBaseExtension(AsyncExtension):
+class AsyncASRBaseExtension(
+    AsyncExtension
+):  # pylint: disable=too-many-instance-attributes, too-many-public-methods
+    """Asynchronous base class for ASR modules."""
+
     def __init__(self, name: str):
         super().__init__(name)
 
@@ -51,6 +62,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.buffered_frames_size = 0
         self.audio_frames_queue = asyncio.Queue[AudioFrame]()
         self.audio_timeline = AudioTimeline()
+        self.dumper: Dumper | None = None
         self.audio_actual_send_metrics_task: asyncio.Task[None] | None = None
         self.uuid = self._get_uuid()  # Unique identifier for the current final turn
 
@@ -66,6 +78,22 @@ class AsyncASRBaseExtension(AsyncExtension):
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         self.ten_env = ten_env
         asyncio.create_task(self._audio_frame_consumer())
+
+        enable_dump, err = await ten_env.get_property_bool(PROPERTY_KEY_DUMP)
+        if err:
+            ten_env.log_info(f"dump not set, disable dump: {err}")
+        elif enable_dump:
+            dump_path, err = await ten_env.get_property_string(PROPERTY_KEY_DUMP_PATH)
+            if err:
+                ten_env.log_warn(f"dump_path not set, use current directory: {err}")
+                dump_path = "."
+
+            dump_file_path = os.path.join(dump_path, self.dump_file_name())
+            self.dumper = Dumper(dump_file_path, None)
+
+    async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
+        if self.dumper:
+            await self.dumper.close()
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
@@ -126,6 +154,10 @@ class AsyncASRBaseExtension(AsyncExtension):
         """Get the name of the ASR vendor."""
         raise NotImplementedError("This method should be implemented in subclasses.")
 
+    def dump_file_name(self) -> str:
+        """Return the base dump filename."""
+        return f"{self.vendor()}_{self.name}_out.pcm"
+
     @abstractmethod
     async def start_connection(self) -> None:
         """Start the connection to the ASR service."""
@@ -161,6 +193,26 @@ class AsyncASRBaseExtension(AsyncExtension):
         Default is 2 (16-bit PCM).
         """
         return 2
+
+    # Automatically wrap subclass start_connection to update dumper session first
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        orig = cls.__dict__.get("start_connection")
+        if orig is None:
+            return
+
+        # Only wrap coroutine functions
+        @wraps(orig)
+        async def wrapped(self: AsyncASRBaseExtension, *args, **kw):
+            try:
+                if self.dumper is not None:
+                    await self.dumper.update_session()
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                if self.ten_env is not None:
+                    self.ten_env.log_error(f"auto update_session failed: {e}")
+            return await orig(self, *args, **kw)
+
+        setattr(cls, "start_connection", wrapped)
 
     def buffer_strategy(self) -> ASRBufferConfig:
         """
@@ -215,7 +267,7 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         stable_data = Data.create("asr_result")
 
-        model_json = asr_result.model_dump()
+        model_json = asr_result.model_dump(exclude_none=True)
 
         stable_data.set_property_from_json(
             None,
@@ -227,40 +279,38 @@ class AsyncASRBaseExtension(AsyncExtension):
         if asr_result.final:
             self.uuid = self._get_uuid()  # Reset UUID for the next final turn
 
-
     @final
     async def send_asr_error(
-        self, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None
+        self,
+        code: ModuleErrorCode,
+        message: str,
+        vendor_info: ModuleErrorVendorInfo | None = None,
     ) -> None:
         """
         Send an error message related to ASR processing.
         """
         error_data = Data.create("error")
 
-        vendorInfo = None
+        module_error = ModuleError(
+            id=self.uuid,
+            module=ModuleType.ASR,
+            code=code.value,
+            message=message,
+            metadata={
+                PROPERTY_KEY_SESSION_ID: self.session_id or "",
+            },
+        )
+
         if vendor_info:
-            vendorInfo = {
-                "vendor": vendor_info.vendor,
-                "code": vendor_info.code,
-                "message": vendor_info.message,
-            }
+            module_error.vendor_info = ModuleErrorVendorInfo(
+                vendor=self.vendor(),
+                code=vendor_info.code,
+                message=vendor_info.message,
+            )
 
         error_data.set_property_from_json(
             None,
-            json.dumps(
-                {
-                    "id": self.uuid,
-                    "module": ModuleType.ASR,
-                    "code": error.code,
-                    "message": error.message,
-                    "vendor_info": vendorInfo or {},
-                    "metadata": (
-                        {}
-                        if self.session_id is None
-                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
-                    ),
-                }
-            ),
+            module_error.model_dump_json(exclude_none=True),
         )
 
         await self.ten_env.send_data(error_data)
@@ -443,7 +493,7 @@ class AsyncASRBaseExtension(AsyncExtension):
                 await self._handle_audio_frame(self.ten_env, audio_frame)
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 self.ten_env.log_error(f"Error consuming audio frame: {e}")
 
     async def _send_audio_actual_send_metrics_task(self) -> None:

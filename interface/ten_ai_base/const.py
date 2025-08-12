@@ -35,3 +35,5 @@ DATA_OUT_METRICS = "metrics"
 
 PROPERTY_KEY_METADATA = "metadata"
 PROPERTY_KEY_SESSION_ID = "session_id"
+PROPERTY_KEY_DUMP = "dump"
+PROPERTY_KEY_DUMP_PATH = "dump_path"

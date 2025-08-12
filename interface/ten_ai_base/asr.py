@@ -91,6 +91,10 @@ class AsyncASRBaseExtension(
             dump_file_path = os.path.join(dump_path, self.dump_file_name())
             self.dumper = Dumper(dump_file_path, None)
 
+    async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
+        if self.dumper:
+            await self.dumper.close()
+
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
 

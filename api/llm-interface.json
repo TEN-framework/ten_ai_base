@@ -5,6 +5,9 @@
             "name": "chat_completion",
             "property": {
                 "properties": {
+                    "request_id": {
+                        "type": "string"
+                    },
                     "model": {
                         "type": "string"
                     },
@@ -57,6 +60,16 @@
                         "created": {
                             "type": "int64"
                         }
+                    }
+                }
+            }
+        },
+        {
+            "name": "abort",
+            "property": {
+                "properties": {
+                    "request_id": {
+                        "type": "string"
                     }
                 }
             }

@@ -124,12 +124,19 @@ class LLMRequest(BaseModel):
     Model for LLM input data.
     This model is used to define the structure of the input data for LLM operations.
     """
+    request_id: str
     model: str
     messages: list[LLMMessage]
     streaming: Optional[bool] = True
     tools: Optional[list[LLMToolMetadata]] = None
     parameters: Optional[dict[str, Any]] = None
 
+class LLMRequestAbort(BaseModel):
+    """
+    Model for LLM abort request.
+    This model is used to define the structure of the request to abort an ongoing LLM operation.
+    """
+    request_id: str
 
 class EventType(str, Enum):
     MESSAGE_CONTENT_DELTA = "message_content_delta"

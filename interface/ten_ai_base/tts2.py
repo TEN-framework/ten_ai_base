@@ -160,7 +160,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
 
     async def send_tts_audio_data(
-        self, audio_data: bytes, timestamp: int
+        self, audio_data: bytes, timestamp: int = 0
     ) -> None:
         """End sending audio out."""
         try:

@@ -45,6 +45,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.stopped = False
         self.ten_env: AsyncTenEnv = None  # type: ignore
         self.session_id = None
+        self.metadata = None
         self.finalize_id = None
         self.sent_buffer_length = 0
         self.buffered_frames = asyncio.Queue[AudioFrame]()
@@ -195,8 +196,8 @@ class AsyncASRBaseExtension(AsyncExtension):
         Send a transcription result as output.
         """
         asr_result.id = self.uuid
-        if self.session_id is not None:
-            asr_result.metadata[PROPERTY_KEY_SESSION_ID] = self.session_id
+        if self.metadata is not None:
+            asr_result.metadata = self.metadata
 
         # If this is the first result and there is a timestamp for the first
         # audio sent, calculate and send TTFW.
@@ -227,7 +228,6 @@ class AsyncASRBaseExtension(AsyncExtension):
         if asr_result.final:
             self.uuid = self._get_uuid()  # Reset UUID for the next final turn
 
-
     @final
     async def send_asr_error(
         self, error: ModuleError, vendor_info: ModuleErrorVendorInfo | None = None
@@ -254,11 +254,7 @@ class AsyncASRBaseExtension(AsyncExtension):
                     "code": error.code,
                     "message": error.message,
                     "vendor_info": vendorInfo or {},
-                    "metadata": (
-                        {}
-                        if self.session_id is None
-                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
-                    ),
+                    "metadata": ({} if self.metadata is None else self.metadata),
                 }
             ),
         )
@@ -276,11 +272,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             json.dumps(
                 {
                     "finalize_id": self.finalize_id,
-                    "metadata": (
-                        {}
-                        if self.session_id is None
-                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
-                    ),
+                    "metadata": ({} if self.metadata is None else self.metadata),
                 }
             ),
         )
@@ -341,11 +333,7 @@ class AsyncASRBaseExtension(AsyncExtension):
                     "module": metrics.module,
                     "vendor": metrics.vendor,
                     "metrics": metrics.metrics,
-                    "metadata": (
-                        {}
-                        if self.session_id is None
-                        else {PROPERTY_KEY_SESSION_ID: self.session_id}
-                    ),
+                    "metadata": ({} if self.metadata is None else self.metadata),
                 }
             ),
         )
@@ -409,6 +397,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         if metadata:
             try:
                 metadata_json = json.loads(metadata)
+                self.metadata = metadata_json
                 self.session_id = metadata_json.get(
                     PROPERTY_KEY_SESSION_ID, self.session_id
                 )

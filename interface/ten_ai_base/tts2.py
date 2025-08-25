@@ -199,7 +199,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 buff = f.lock_buf()
                 buff[:] = combined_data
                 f.unlock_buf(buff)
-                self.ten_env.log_debug(f"send audio frame, timestamp: {timestamp}, length: {len(combined_data)}")
                 await self.ten_env.send_audio_frame(f)
         except Exception as e:
             self.ten_env.log_error(

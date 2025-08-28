@@ -51,12 +51,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.output_characters = 0
         self.input_characters = 0
         self.recv_audio_duration = 0
-        self.recv_audio_chunks = 0
+        self.recv_audio_chunks = b""
         #billing metricstotal
         self.total_output_characters = 0
         self.total_input_characters = 0
         self.total_recv_audio_duration = 0
-        self.total_recv_audio_chunks = 0
+        self.total_recv_audio_chunks = b""
         self.timer_task = None
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
@@ -330,6 +330,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                         "total_recv_audio_duration": self.total_recv_audio_duration,
                     }
                 )
+                ten_env.log_debug(f"billing_metrics: {metrics}")
                 data.set_property_from_json(None, metrics.model_dump_json())
                 await ten_env.send_data(data)
                 self.billing_metrics_reset()
@@ -349,7 +350,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.input_characters += characters
         self.total_input_characters += characters
 
-    def billing_metrics_add_recv_audio_chunks(self, chunks: int) -> None:
+    def billing_metrics_add_recv_audio_chunks(self, chunks: bytes) -> None:
         self.total_recv_audio_chunks += chunks
         self.recv_audio_chunks += chunks
 
@@ -357,7 +358,22 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.output_characters = 0
         self.input_characters = 0
         self.recv_audio_duration = 0
-        self.recv_audio_chunks = 0
+        self.recv_audio_chunks = b""
+
+    async def metrics_connect_delay(self, connect_delay_ms: int):
+        data = Data.create("metrics")
+        metrics = ModuleMetrics(
+            id=self.get_uuid(),
+            module=ModuleType.TTS,
+            vendor=self.vendor(),
+            metrics={
+                "connect_delay": connect_delay_ms,
+            }
+        )
+        self.ten_env.log_debug(f"metrics_connect_delay: {metrics}")
+        data.set_property_from_json(None, metrics.model_dump_json())
+        await self.ten_env.send_data(data)
+
 
     @abstractmethod
     def vendor(self) -> str:

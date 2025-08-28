@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import json
 import traceback
+import uuid
 
 from .helper import AsyncQueue
 from .message import ModuleError, ModuleMetricKey, ModuleMetrics, ModuleType, TTSAudioEndReason
@@ -339,3 +340,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         Default is 2 (16-bit PCM).
         """
         return 2
+
+    def get_uuid(self) -> str:
+        """
+        Get a unique identifier
+        """
+        return uuid.uuid4().hex

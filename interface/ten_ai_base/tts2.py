@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import json
 import traceback
+import uuid
 
 from .helper import AsyncQueue
 from .message import ModuleError, ModuleMetricKey, ModuleMetrics, ModuleType, TTSAudioEndReason
@@ -46,6 +47,18 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.leftover_bytes = b""
         self.session_id = None
 
+        # billing metrics every 5 seconds
+        self.output_characters = 0
+        self.input_characters = 0
+        self.recv_audio_duration = 0
+        self.recv_audio_chunks = b""
+        #billing metricstotal
+        self.total_output_characters = 0
+        self.total_input_characters = 0
+        self.total_recv_audio_duration = 0
+        self.total_recv_audio_chunks = b""
+        self.timer_task = None
+
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         await super().on_init(ten_env)
         self.ten_env = ten_env
@@ -55,6 +68,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         if self.loop_task is None:
             self.loop = asyncio.get_event_loop()
             self.loop_task = self.loop.create_task(self._process_input_queue(ten_env))
+        self.timer_task = asyncio.create_task(self.timer_logger(ten_env))
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         await super().on_stop(ten_env)
@@ -62,6 +76,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         if self.loop_task:
             self.loop_task.cancel()
         await self.input_queue.put(None)  # Signal the loop to stop processing
+        if self.timer_task:
+            self.timer_task.cancel()
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(ten_env)
@@ -199,7 +215,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 buff = f.lock_buf()
                 buff[:] = combined_data
                 f.unlock_buf(buff)
-                self.ten_env.log_debug(f"send audio frame, timestamp: {timestamp}, length: {len(combined_data)}")
                 await self.ten_env.send_audio_frame(f)
         except Exception as e:
             self.ten_env.log_error(
@@ -295,6 +310,70 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
         await self.ten_env.send_data(error_data)
 
+    # Start timer task to print log every 5 seconds
+    async def timer_logger(self, ten_env: AsyncTenEnv):
+        while True:
+            try:
+                await asyncio.sleep(5)
+                self.billing_metrics_calculate_duration()
+                data = Data.create("metrics")
+                metrics = ModuleMetrics(
+                    id=self.get_uuid(),
+                    module=ModuleType.TTS,
+                    vendor=self.vendor(),
+                    metrics={
+                        "output_characters": self.output_characters,
+                        "input_characters": self.input_characters,
+                        "recv_audio_duration": self.recv_audio_duration,
+                        "total_output_characters": self.total_output_characters,
+                        "total_input_characters": self.total_input_characters,
+                        "total_recv_audio_duration": self.total_recv_audio_duration,
+                    }
+                )
+                ten_env.log_debug(f"billing_metrics: {metrics}")
+                data.set_property_from_json(None, metrics.model_dump_json())
+                await ten_env.send_data(data)
+                self.billing_metrics_reset()
+
+            except asyncio.CancelledError:
+                break
+
+    def billing_metrics_calculate_duration(self) -> None:
+        self.recv_audio_duration = (float(len(self.recv_audio_chunks)) / self.synthesize_audio_channels() * 1000 / self.synthesize_audio_sample_width()) / self.synthesize_audio_sample_rate()
+        self.total_recv_audio_duration = (float(len(self.total_recv_audio_chunks)) / self.synthesize_audio_channels() * 1000 / self.synthesize_audio_sample_width()) / self.synthesize_audio_sample_rate()
+
+    def billing_metrics_add_output_characters(self, characters: int) -> None:
+        self.output_characters += characters
+        self.total_output_characters += characters
+
+    def billing_metrics_add_input_characters(self, characters: int) -> None:
+        self.input_characters += characters
+        self.total_input_characters += characters
+
+    def billing_metrics_add_recv_audio_chunks(self, chunks: bytes) -> None:
+        self.total_recv_audio_chunks += chunks
+        self.recv_audio_chunks += chunks
+
+    def billing_metrics_reset(self) -> None:
+        self.output_characters = 0
+        self.input_characters = 0
+        self.recv_audio_duration = 0
+        self.recv_audio_chunks = b""
+
+    async def metrics_connect_delay(self, connect_delay_ms: int):
+        data = Data.create("metrics")
+        metrics = ModuleMetrics(
+            id=self.get_uuid(),
+            module=ModuleType.TTS,
+            vendor=self.vendor(),
+            metrics={
+                "connect_delay": connect_delay_ms,
+            }
+        )
+        self.ten_env.log_debug(f"metrics_connect_delay: {metrics}")
+        data.set_property_from_json(None, metrics.model_dump_json())
+        await self.ten_env.send_data(data)
+
 
     @abstractmethod
     def vendor(self) -> str:
@@ -340,3 +419,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         Default is 2 (16-bit PCM).
         """
         return 2
+
+    def get_uuid(self) -> str:
+        """
+        Get a unique identifier
+        """
+        return uuid.uuid4().hex

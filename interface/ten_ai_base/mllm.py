@@ -405,7 +405,7 @@ class AsyncMLLMBaseExtension(AsyncExtension):
             return
 
         if not self.is_connected():
-            ten_env.log_verbose("send_frame: service not connected.")
+            ten_env.log_debug("send_frame: service not connected.")
             buffer_strategy = self.buffer_strategy()
             if isinstance(buffer_strategy, MLLMBufferConfigModeKeep):
                 byte_limit = buffer_strategy.byte_limit

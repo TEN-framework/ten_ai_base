@@ -70,7 +70,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         #send laster time before stop
-        await self.send_billing_metrics(ten_env)
+        await self.send_billing_metrics()
         await super().on_stop(ten_env)
         await self._flush_input_items()
         if self.loop_task:

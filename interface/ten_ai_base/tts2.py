@@ -57,7 +57,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.total_input_characters = 0
         self.total_recv_audio_duration = 0
         self.total_recv_audio_chunks = b""
-        self.timer_task = None
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         await super().on_init(ten_env)
@@ -68,16 +67,16 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         if self.loop_task is None:
             self.loop = asyncio.get_event_loop()
             self.loop_task = self.loop.create_task(self._process_input_queue(ten_env))
-        self.timer_task = asyncio.create_task(self.timer_logger(ten_env))
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
+        #send laster time before stop
+        await self.send_billing_metrics()
         await super().on_stop(ten_env)
         await self._flush_input_items()
         if self.loop_task:
             self.loop_task.cancel()
         await self.input_queue.put(None)  # Signal the loop to stop processing
-        if self.timer_task:
-            self.timer_task.cancel()
+
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(ten_env)
@@ -309,36 +308,29 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         )
 
         await self.ten_env.send_data(error_data)
+    #send when tts audio end
+    async def send_billing_metrics(self):
+        await self.billing_metrics_calculate_duration()
+        data = Data.create("metrics")
+        metrics = ModuleMetrics(
+            id=self.get_uuid(),
+            module=ModuleType.TTS,
+            vendor=self.vendor(),
+            metrics={
+                "output_characters": self.output_characters,
+                "input_characters": self.input_characters,
+                "recv_audio_duration": self.recv_audio_duration,
+                "total_output_characters": self.total_output_characters,
+                "total_input_characters": self.total_input_characters,
+                "total_recv_audio_duration": self.total_recv_audio_duration,
+            }
+        )
+        self.ten_env.log_debug(f"billing_metrics: {metrics}")
+        data.set_property_from_json(None, metrics.model_dump_json())
+        await self.ten_env.send_data(data)
+        self.billing_metrics_reset()
 
-    # Start timer task to print log every 5 seconds
-    async def timer_logger(self, ten_env: AsyncTenEnv):
-        while True:
-            try:
-                await asyncio.sleep(5)
-                self.billing_metrics_calculate_duration()
-                data = Data.create("metrics")
-                metrics = ModuleMetrics(
-                    id=self.get_uuid(),
-                    module=ModuleType.TTS,
-                    vendor=self.vendor(),
-                    metrics={
-                        "output_characters": self.output_characters,
-                        "input_characters": self.input_characters,
-                        "recv_audio_duration": self.recv_audio_duration,
-                        "total_output_characters": self.total_output_characters,
-                        "total_input_characters": self.total_input_characters,
-                        "total_recv_audio_duration": self.total_recv_audio_duration,
-                    }
-                )
-                ten_env.log_debug(f"billing_metrics: {metrics}")
-                data.set_property_from_json(None, metrics.model_dump_json())
-                await ten_env.send_data(data)
-                self.billing_metrics_reset()
-
-            except asyncio.CancelledError:
-                break
-
-    def billing_metrics_calculate_duration(self) -> None:
+    async def billing_metrics_calculate_duration(self) -> None:
         self.recv_audio_duration = (float(len(self.recv_audio_chunks)) / self.synthesize_audio_channels() * 1000 / self.synthesize_audio_sample_width()) / self.synthesize_audio_sample_rate()
         self.total_recv_audio_duration = (float(len(self.total_recv_audio_chunks)) / self.synthesize_audio_channels() * 1000 / self.synthesize_audio_sample_width()) / self.synthesize_audio_sample_rate()
 

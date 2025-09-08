@@ -35,3 +35,5 @@ DATA_OUT_METRICS = "metrics"
 
 PROPERTY_KEY_METADATA = "metadata"
 PROPERTY_KEY_SESSION_ID = "session_id"
+
+LOG_CATEGORY_KEY_POINT = "key_point"

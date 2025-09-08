@@ -22,6 +22,7 @@ from .const import (
     DATA_IN_ASR_FINALIZE,
     DATA_OUT_ASR_FINALIZE_END,
     DATA_OUT_METRICS,
+    LOG_CATEGORY_KEY_POINT,
     PROPERTY_KEY_METADATA,
     PROPERTY_KEY_SESSION_ID,
 )
@@ -89,15 +90,26 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         if data_name == DATA_IN_ASR_FINALIZE:
             if not self.is_connected():
-                ten_env.log_warn("asr_finalize: service not connected.")
+                ten_env.log_warn(
+                    "asr_finalize: service not connected.",
+                    category=LOG_CATEGORY_KEY_POINT,
+                )
 
             finalize_id, err = data.get_property_string("finalize_id")
             if err:
-                ten_env.log_error(f"asr_finalize: failed to get finalize_id: {err}")
+                ten_env.log_error(
+                    f"asr_finalize: failed to get finalize_id: {err}",
+                    category=LOG_CATEGORY_KEY_POINT,
+                )
                 return
 
             self.finalize_id = finalize_id
             self.last_finalize_time = asyncio.get_event_loop().time()
+
+            ten_env.log_info(
+                f"asr_finalize: finalize_id: {self.finalize_id}",
+                category=LOG_CATEGORY_KEY_POINT,
+            )
 
             await self.finalize(self.session_id)
 
@@ -225,6 +237,10 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         await self.ten_env.send_data(stable_data)
 
+        self.ten_env.log_info(
+            f"send_asr_result: {model_json}", category=LOG_CATEGORY_KEY_POINT
+        )
+
         if asr_result.final:
             self.uuid = self._get_uuid()  # Reset UUID for the next final turn
 
@@ -261,6 +277,10 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         await self.ten_env.send_data(error_data)
 
+        self.ten_env.log_info(
+            f"send asr_error: {error_data}", category=LOG_CATEGORY_KEY_POINT
+        )
+
     @final
     async def send_asr_finalize_end(self) -> None:
         """
@@ -278,6 +298,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         )
 
         await self.ten_env.send_data(drain_data)
+        self.ten_env.log_info(
+            f"send asr_finalize_end: {drain_data}", category=LOG_CATEGORY_KEY_POINT
+        )
 
     @final
     async def send_connect_delay_metrics(self, connect_delay: int) -> None:
@@ -339,6 +362,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         )
 
         await self.ten_env.send_data(metrics_data)
+        self.ten_env.log_info(
+            f"send asr_metrics: {metrics}", category=LOG_CATEGORY_KEY_POINT
+        )
 
     async def _send_metrics_ttfw(self, ttfw: int) -> None:
         """

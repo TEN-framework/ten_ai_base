@@ -37,3 +37,4 @@ PROPERTY_KEY_METADATA = "metadata"
 PROPERTY_KEY_SESSION_ID = "session_id"
 
 LOG_CATEGORY_KEY_POINT = "key_point"
+LOG_CATEGORY_VENDOR = "vendor"

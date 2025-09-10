@@ -286,8 +286,8 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         Send a signal that the ASR service has finished processing all audio frames.
         """
-        drain_data = Data.create(DATA_OUT_ASR_FINALIZE_END)
-        drain_data.set_property_from_json(
+        asr_finalize_end_data = Data.create(DATA_OUT_ASR_FINALIZE_END)
+        asr_finalize_end_data.set_property_from_json(
             None,
             json.dumps(
                 {
@@ -297,9 +297,10 @@ class AsyncASRBaseExtension(AsyncExtension):
             ),
         )
 
-        await self.ten_env.send_data(drain_data)
+        await self.ten_env.send_data(asr_finalize_end_data)
         self.ten_env.log_info(
-            f"send asr_finalize_end: {drain_data}", category=LOG_CATEGORY_KEY_POINT
+            f"send asr_finalize_end, finalize_id: {self.finalize_id}",
+            category=LOG_CATEGORY_KEY_POINT,
         )
 
     @final

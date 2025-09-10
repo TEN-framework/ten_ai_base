@@ -27,7 +27,8 @@ from ten_runtime.async_ten_env import AsyncTenEnv
 from ten_runtime.audio_frame import AudioFrame, AudioFrameDataFmt
 from ten_runtime.cmd import Cmd
 from ten_runtime.cmd_result import CmdResult, StatusCode
-
+from ten_ai_base.const import LOG_CATEGORY_VENDOR
+from ten_ai_base.const import LOG_CATEGORY_KEY_POINT
 DATA_TTS_TEXT_INPUT = "tts_text_input"
 DATA_TTS_TEXT_RESULT = "tts_text_result"
 DATA_FLUSH = "tts_flush"
@@ -103,7 +104,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             data_payload, err = data.get_property_to_json("")
             if err:
                 raise RuntimeError(f"Failed to get data payload: {err}")
-            ten_env.log_debug(f"on_data {data_name}, payload {data_payload}")
 
             try:
                 t = TTSTextInput.model_validate_json(data_payload)
@@ -120,7 +120,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             data_payload, err = data.get_property_to_json("")
             if err:
                 raise RuntimeError(f"Failed to get data payload: {err}")
-            ten_env.log_debug(f"on_data {data_name}, payload {data_payload}")
 
             try:
                 t = TTSFlush.model_validate_json(data_payload)
@@ -340,7 +339,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 "total_recv_audio_duration": self.total_recv_audio_duration,
             },
         )
-        self.ten_env.log_debug(f"metrics: {metrics}")
 
         self.ten_env.log_info(
             f"tts_metrics:  {metrics} of request_id: {request_id}",

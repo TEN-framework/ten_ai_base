@@ -77,7 +77,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         # send laster time before stop
-        await self.send_metrics()
+        await self.send_char_audio_metrics()
         await super().on_stop(ten_env)
         await self._flush_input_items()
         if self.loop_task:
@@ -111,7 +111,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
                 return
             self.ten_env.log_info(
-                f"get tts_text_input:  {data_payload}",
+                f"on_data tts_text_input:  {json.dumps(json.loads(data_payload), ensure_ascii=False)}",
                 category=LOG_CATEGORY_KEY_POINT,
             )
             # Start an asynchronous task for handling tts
@@ -225,7 +225,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def send_tts_ttfb_metrics(
         self, request_id: str, ttfb_ms: int, turn_id: int = -1
     ) -> None:
-        data = Data.create("metrics")
         metrics = ModuleMetrics(
             id=request_id,
             module=ModuleType.TTS,
@@ -237,11 +236,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             },
         )
         self.ten_env.log_info(
-            f"tts_ttfb:  {metrics} of request_id: {request_id}",
+            f"tts_ttfb:  {ttfb_ms} of request_id: {request_id}",
             category=LOG_CATEGORY_KEY_POINT,
         )
-        data.set_property_from_json(None, metrics.model_dump_json())
-        await self.ten_env.send_data(data)
+        await self.send_metrics(metrics, request_id)
 
     async def send_tts_audio_start(self, request_id: str, turn_id: int = -1) -> None:
         data = Data.create("tts_audio_start")
@@ -323,9 +321,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.ten_env.send_data(error_data)
 
     # send when tts audio end
-    async def send_metrics(self, request_id: str = ""):
+    async def send_char_audio_metrics(self, request_id: str = ""):
         await self.metrics_calculate_duration()
-        data = Data.create("metrics")
         metrics = ModuleMetrics(
             id=self.get_uuid(),
             module=ModuleType.TTS,
@@ -339,15 +336,18 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 "total_recv_audio_duration": self.total_recv_audio_duration,
             },
         )
+        await self.send_metrics(metrics, request_id)
+        self.metrics_reset()
 
+    async def send_metrics(self, metrics:ModuleMetrics, request_id: str = ""):
+        data = Data.create("metrics")
         self.ten_env.log_info(
             f"tts_metrics:  {metrics} of request_id: {request_id}",
             category=LOG_CATEGORY_KEY_POINT,
         )
         data.set_property_from_json(None, metrics.model_dump_json())
         await self.ten_env.send_data(data)
-        self.metrics_reset()
-
+        
     async def metrics_calculate_duration(self) -> None:
         self.recv_audio_duration = (
             float(len(self.recv_audio_chunks))

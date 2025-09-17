@@ -29,6 +29,7 @@ from ten_runtime.cmd import Cmd
 from ten_runtime.cmd_result import CmdResult, StatusCode
 from ten_ai_base.const import LOG_CATEGORY_VENDOR
 from ten_ai_base.const import LOG_CATEGORY_KEY_POINT
+
 DATA_TTS_TEXT_INPUT = "tts_text_input"
 DATA_TTS_TEXT_RESULT = "tts_text_result"
 DATA_FLUSH = "tts_flush"
@@ -54,12 +55,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.leftover_bytes = b""
         self.session_id = None
 
-        # billing metrics every 5 seconds
+        # metrics every 5 seconds
         self.output_characters = 0
         self.input_characters = 0
         self.recv_audio_duration = 0
         self.recv_audio_chunks = b""
-        # billing metricstotal
+        # metrics for request level
         self.total_output_characters = 0
         self.total_input_characters = 0
         self.total_recv_audio_duration = 0
@@ -223,17 +224,28 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.ten_env.send_data(data)
 
     async def send_tts_ttfb_metrics(
-        self, request_id: str, ttfb_ms: int, turn_id: int = -1
+        self,
+        request_id: str,
+        ttfb_ms: int,
+        turn_id: int = -1,
+        extra_metadata: dict = None,
     ) -> None:
+        # basic metadata
+        metadata = {
+            "session_id": self.session_id or "",
+            "turn_id": turn_id,
+        }
+
+        # if there is extra metadata, add it to the basic metadata
+        if extra_metadata:
+            metadata.update(extra_metadata)
+
         metrics = ModuleMetrics(
-            id=request_id,
+            id=self.get_uuid(),
             module=ModuleType.TTS,
             vendor=self.vendor(),
             metrics={ModuleMetricKey.TTS_TTFB: ttfb_ms},
-            metadata={
-                "session_id": self.session_id or "",
-                "turn_id": turn_id,
-            },
+            metadata=metadata,
         )
         self.ten_env.log_info(
             f"tts_ttfb:  {ttfb_ms} of request_id: {request_id}",
@@ -339,7 +351,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.send_metrics(metrics, request_id)
         self.metrics_reset()
 
-    async def send_metrics(self, metrics:ModuleMetrics, request_id: str = ""):
+    async def send_metrics(self, metrics: ModuleMetrics, request_id: str = ""):
         data = Data.create("metrics")
         self.ten_env.log_info(
             f"tts_metrics:  {metrics} of request_id: {request_id}",
@@ -347,7 +359,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         )
         data.set_property_from_json(None, metrics.model_dump_json())
         await self.ten_env.send_data(data)
-        
+
     async def metrics_calculate_duration(self) -> None:
         self.recv_audio_duration = (
             float(len(self.recv_audio_chunks))

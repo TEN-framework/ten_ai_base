@@ -52,7 +52,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.buffered_frames = asyncio.Queue[AudioFrame]()
         self.buffered_frames_size = 0
         self.audio_frames_queue = asyncio.Queue[AudioFrame]()
-        self.audio_timeline = AudioTimeline()
+        self.audio_timeline = AudioTimeline(self._handle_error_in_audio_timeline)
         self.audio_actual_send_metrics_task: asyncio.Task[None] | None = None
         self.uuid = self._get_uuid()  # Unique identifier for the current final turn
 
@@ -471,3 +471,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         while not self.stopped:
             await asyncio.sleep(interval)
             await self._send_audio_actual_send_metrics()
+    
+    def _handle_error_in_audio_timeline(self, error: str) -> None:
+        """
+        Handle error in audio timeline.
+        """
+        self.ten_env.log_error(error)

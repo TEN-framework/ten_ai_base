@@ -4,6 +4,7 @@
 # See the LICENSE file for more information.
 #
 from enum import Enum
+from typing import Callable, Optional
 
 
 class AudioTimelineEventType(Enum):
@@ -12,11 +13,12 @@ class AudioTimelineEventType(Enum):
 
 
 class AudioTimeline:
-    def __init__(self):
+    def __init__(self, error_cb: Optional[Callable[[str], None]] = None):
         # Store timeline event list, each event is a tuple of (type, duration)
         self.timeline: list[tuple[AudioTimelineEventType, int]] = []
         self.total_user_audio_duration = 0
         self.total_silence_audio_duration = 0
+        self.error_cb = error_cb
 
     def add_user_audio(self, duration_ms: int):
         """Add user audio
@@ -71,6 +73,14 @@ class AudioTimeline:
                 if current_time + duration < time_ms:
                     total_duration += duration
                 else:
+                    if self.error_cb is not None:
+                        try:
+                            self.error_cb(
+                                f"User audio duration is less than the requested time: {current_time + duration} < {time_ms}"
+                            )
+                        except Exception:
+                            # Silently ignore callback errors to keep returning result normally
+                            pass
                     total_duration += max(0, time_ms - current_time)
                     break
             current_time += duration

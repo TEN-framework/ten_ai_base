@@ -78,7 +78,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         # send laster time before stop
-        await self.send_char_audio_metrics()
+        await self.send_usage_metrics()
         await super().on_stop(ten_env)
         await self._flush_input_items()
         if self.loop_task:
@@ -317,6 +317,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             {
                 "id": request_id or "",
                 "code": error.code,
+                "module": ModuleType.TTS,
                 "message": error.message,
                 "vendor_info": vendorInfo or {},
                 "metadata": {"session_id": self.session_id or ""},
@@ -332,8 +333,11 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         )
         await self.ten_env.send_data(error_data)
 
-    # send when tts audio end
     async def send_char_audio_metrics(self, request_id: str = ""):
+        await self.send_usage_metrics(request_id)
+
+    # send when tts audio end
+    async def send_usage_metrics(self, request_id: str = ""):
         await self.metrics_calculate_duration()
         metrics = ModuleMetrics(
             id=self.get_uuid(),

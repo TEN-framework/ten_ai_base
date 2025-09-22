@@ -260,25 +260,29 @@ class AsyncASRBaseExtension(AsyncExtension):
                 "code": vendor_info.code,
                 "message": vendor_info.message,
             }
+        else:
+            vendorInfo = error.vendor_info
+
+        property_json = json.dumps(
+            {
+                "id": self.uuid,
+                "module": ModuleType.ASR,
+                "code": error.code,
+                "message": error.message,
+                "vendor_info": vendorInfo or {},
+                "metadata": ({} if self.metadata is None else self.metadata),
+            }
+        )
 
         error_data.set_property_from_json(
             None,
-            json.dumps(
-                {
-                    "id": self.uuid,
-                    "module": ModuleType.ASR,
-                    "code": error.code,
-                    "message": error.message,
-                    "vendor_info": vendorInfo or {},
-                    "metadata": ({} if self.metadata is None else self.metadata),
-                }
-            ),
+            property_json,
         )
 
         await self.ten_env.send_data(error_data)
 
         self.ten_env.log_info(
-            f"send asr_error: {error_data}", category=LOG_CATEGORY_KEY_POINT
+            f"send asr_error: {property_json}", category=LOG_CATEGORY_KEY_POINT
         )
 
     @final
@@ -471,7 +475,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         while not self.stopped:
             await asyncio.sleep(interval)
             await self._send_audio_actual_send_metrics()
-    
+
     def _handle_error_in_audio_timeline(self, error: str) -> None:
         """
         Handle error in audio timeline.

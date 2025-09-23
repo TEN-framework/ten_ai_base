@@ -203,7 +203,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         raise NotImplementedError("This method should be implemented in subclasses.")
 
     @final
-    async def send_asr_result(self, asr_result: ASRResult) -> None:
+    async def send_asr_result(self, asr_result: ASRResult, is_translation: bool = False) -> None:
         """
         Send a transcription result as output.
         """
@@ -226,7 +226,9 @@ class AsyncASRBaseExtension(AsyncExtension):
             await self._send_metrics_ttlw(ttlw)
             self.last_finalize_time = None
 
-        stable_data = Data.create("asr_result")
+        data_name = "asr_result" if not is_translation else "asr_translation_result"
+
+        stable_data = Data.create(data_name)
 
         model_json = asr_result.model_dump()
 

@@ -64,27 +64,67 @@ class AudioTimeline:
         self.total_silence_audio_duration += duration_ms
 
     def get_audio_duration_before_time(self, time_ms: int) -> int:
-        total_duration = 0
+        """
+        Calculate the total duration of user audio before a specified timestamp.
+        If time_ms exceeds the total timeline duration, an error callback will be invoked.
+
+        Timeline diagram:
+        Timeline: [USER_AUDIO:100ms] [SILENCE:50ms] [USER_AUDIO:200ms] [SILENCE:100ms]
+        Time:     0              100            150              350             450
+
+        Examples:
+        - get_audio_duration_before_time(80)  -> 80ms  (within first USER_AUDIO segment)
+        - get_audio_duration_before_time(120) -> 100ms (first USER_AUDIO + partial SILENCE)
+        - get_audio_duration_before_time(200) -> 150ms (first 100ms + second 50ms)
+        - get_audio_duration_before_time(500) -> 300ms (all USER_AUDIO, but error reported)
+
+        Args:
+            time_ms: The specified timestamp in milliseconds
+
+        Returns:
+            Total duration of user audio before the specified timestamp in milliseconds
+        """
+        if time_ms < 0:
+            return 0
+
+        total_user_audio_duration = 0
         current_time = 0
-        for event, duration in self.timeline:
+
+        # Calculate total timeline duration
+        total_timeline_duration = sum(duration for _, duration in self.timeline)
+
+        # Check if requested time exceeds timeline range
+        if time_ms > total_timeline_duration:
+            if self.error_cb is not None:
+                try:
+                    self.error_cb(
+                        f"Requested time {time_ms}ms exceeds timeline duration {total_timeline_duration}ms"
+                    )
+                except Exception:
+                    # Silently ignore callback errors to keep returning result normally
+                    pass
+            # When exceeding range, return total user audio duration in timeline
+            return self.total_user_audio_duration
+
+        # Iterate through timeline, accumulating user audio before specified time
+        for event_type, duration in self.timeline:
+            # Stop if current time has reached or exceeded target time
             if current_time >= time_ms:
                 break
-            if event == AudioTimelineEventType.USER_AUDIO:
-                if current_time + duration < time_ms:
-                    total_duration += duration
+
+            if event_type == AudioTimelineEventType.USER_AUDIO:
+                # If entire audio segment is before target time
+                if current_time + duration <= time_ms:
+                    total_user_audio_duration += duration
                 else:
-                    if self.error_cb is not None:
-                        try:
-                            self.error_cb(
-                                f"User audio duration is less than the requested time: {current_time + duration} < {time_ms}"
-                            )
-                        except Exception:
-                            # Silently ignore callback errors to keep returning result normally
-                            pass
-                    total_duration += max(0, time_ms - current_time)
+                    # If audio segment crosses target time, only count portion before target
+                    partial_duration = time_ms - current_time
+                    total_user_audio_duration += max(0, partial_duration)
                     break
+
             current_time += duration
-        return total_duration
+
+        return total_user_audio_duration
 
     def get_total_user_audio_duration(self) -> int:
         return sum(

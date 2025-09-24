@@ -85,13 +85,19 @@ class AudioTimeline:
             Total duration of user audio before the specified timestamp in milliseconds
         """
         if time_ms < 0:
+            if self.error_cb is not None:
+                try:
+                    self.error_cb(f"Requested time {time_ms}ms is less than 0")
+                except Exception:
+                    # Silently ignore callback errors to keep returning result normally
+                    pass
+            # When requested time is less than 0, return 0
             return 0
 
-        total_user_audio_duration = 0
-        current_time = 0
-
         # Calculate total timeline duration
-        total_timeline_duration = sum(duration for _, duration in self.timeline)
+        total_timeline_duration = (
+            self.total_user_audio_duration + self.total_silence_audio_duration
+        )
 
         # Check if requested time exceeds timeline range
         if time_ms > total_timeline_duration:
@@ -105,6 +111,9 @@ class AudioTimeline:
                     pass
             # When exceeding range, return total user audio duration in timeline
             return self.total_user_audio_duration
+        
+        total_user_audio_duration = 0
+        current_time = 0
 
         # Iterate through timeline, accumulating user audio before specified time
         for event_type, duration in self.timeline:
@@ -135,3 +144,5 @@ class AudioTimeline:
 
     def reset(self):
         self.timeline = []
+        self.total_user_audio_duration = 0
+        self.total_silence_audio_duration = 0

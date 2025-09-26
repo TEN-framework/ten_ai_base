@@ -259,8 +259,12 @@ class AsyncASRBaseExtension(AsyncExtension):
                 "code": vendor_info.code,
                 "message": vendor_info.message,
             }
-        else:
-            vendorInfo = error.vendor_info
+        elif error.vendor_info:
+            vendorInfo = {
+                "vendor": error.vendor_info.vendor,
+                "code": error.vendor_info.code,
+                "message": error.vendor_info.message,
+            }
 
         property_json = json.dumps(
             {

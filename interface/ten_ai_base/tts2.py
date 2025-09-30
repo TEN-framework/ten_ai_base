@@ -59,12 +59,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.output_characters = 0
         self.input_characters = 0
         self.recv_audio_duration = 0
-        self.recv_audio_chunks = b""
+        self.recv_audio_chunks_len = 0.0
         # metrics for request level
         self.total_output_characters = 0
         self.total_input_characters = 0
         self.total_recv_audio_duration = 0
-        self.total_recv_audio_chunks = b""
+        self.total_recv_audio_chunks_len = 0.0
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         await super().on_init(ten_env)
@@ -365,13 +365,13 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def metrics_calculate_duration(self) -> None:
         self.recv_audio_duration = (
-            float(len(self.recv_audio_chunks))
+            self.recv_audio_chunks_len
             / self.synthesize_audio_channels()
             * 1000
             / self.synthesize_audio_sample_width()
         ) / self.synthesize_audio_sample_rate()
         self.total_recv_audio_duration = (
-            float(len(self.total_recv_audio_chunks))
+            self.total_recv_audio_chunks_len
             / self.synthesize_audio_channels()
             * 1000
             / self.synthesize_audio_sample_width()
@@ -386,14 +386,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.total_input_characters += characters
 
     def metrics_add_recv_audio_chunks(self, chunks: bytes) -> None:
-        self.total_recv_audio_chunks += chunks
-        self.recv_audio_chunks += chunks
+        self.total_recv_audio_chunks_len += float(len(chunks))
+        self.recv_audio_chunks_len += float(len(chunks))
 
     def metrics_reset(self) -> None:
         self.output_characters = 0
         self.input_characters = 0
         self.recv_audio_duration = 0
-        self.recv_audio_chunks = b""
+        self.recv_audio_chunks_len = 0.0
 
     async def metrics_connect_delay(self, connect_delay_ms: int):
         data = Data.create("metrics")

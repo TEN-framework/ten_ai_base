@@ -305,7 +305,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         turn_id: int = -1,
     ) -> None:
         """
-        Send an error message related to ASR processing.
+        Send an error message related to TTS processing.
         """
         error_data = Data.create("error")
 

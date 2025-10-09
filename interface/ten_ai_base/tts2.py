@@ -298,7 +298,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         )
         await self.ten_env.send_data(data)
 
-    async def send_tts_error(self, request_id: str | None, error: ModuleError) -> None:
+    async def send_tts_error(
+        self,
+        request_id: str | None,
+        error: ModuleError,
+        turn_id: int = -1,
+    ) -> None:
         """
         Send an error message related to ASR processing.
         """
@@ -319,7 +324,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 "module": ModuleType.TTS,
                 "message": error.message,
                 "vendor_info": vendorInfo or {},
-                "metadata": {"session_id": self.session_id or ""},
+                "metadata": {
+                    "session_id": self.session_id or "",
+                    "turn_id": turn_id,
+                },
             }
         )
         error_data.set_property_from_json(

@@ -207,7 +207,8 @@ class AsyncASRBaseExtension(AsyncExtension):
         Send a transcription result as output.
         """
         asr_result.id = self.uuid
-        if self.metadata is not None:
+        # Only set metadata if asr_result doesn't already have metadata and self.metadata is available
+        if self.metadata is not None and not asr_result.metadata:
             asr_result.metadata = self.metadata
 
         # If this is the first result and there is a timestamp for the first

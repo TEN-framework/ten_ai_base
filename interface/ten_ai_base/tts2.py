@@ -56,6 +56,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.leftover_bytes = b""
         self.session_id = None
         self.queue_id = 0  # Current active queue ID (0 or 1)
+        self.receive_flush = False
 
         # metrics every 5 seconds
         self.output_characters = 0
@@ -140,43 +141,53 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             except Exception as e:
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
                 return
+                
             ten_env.log_info(
                 f"receive tts_flush {data_payload} ",
                 category=LOG_CATEGORY_KEY_POINT,
             )
             
-            # Atomic operation: switch to next queue and flush current queue
-            current_queue_id = self.queue_id % 2
-            self.queue_id += 1  # Switch to next queue
-            next_queue_id = self.queue_id % 2
-            
-            ten_env.log_debug(f"Flush started, switching from queue_{current_queue_id} to queue_{next_queue_id}")
-            
-            # Flush current queue and cancel current task
-            current_queue = self._get_queue_by_id(current_queue_id)
-            await current_queue.flush()
-            await self._cancel_current_task()
-            
-            # Call subclass cancel_tts method
-            await self.cancel_tts()
-            
-            ten_env.log_debug(f"Flush completed, now using queue_{next_queue_id}")
-            
-            flush_result = Data.create(DATA_FLUSH_RESULT)
-            json_data = json.dumps(
-                {
-                    "flush_id": t.flush_id,
-                    "metadata": t.metadata,
-                }
-            )
-            flush_result.set_property_from_json(None, json_data)
+            # Set flush flag and ensure it's reset even if crash occurs
+            self.receive_flush = True
+            try:
+                # Atomic operation: switch to next queue and flush current queue
+                current_queue_id = self.queue_id % 2
+                self.queue_id += 1  # Switch to next queue
+                next_queue_id = self.queue_id % 2
+                
+                ten_env.log_debug(f"Flush started, switching from queue_{current_queue_id} to queue_{next_queue_id}")
+                
+                # Flush current queue and cancel current task
+                current_queue = self._get_queue_by_id(current_queue_id)
+                await current_queue.flush()
+                await self._cancel_current_task()
+                
+                # Call subclass cancel_tts method
+                await self.cancel_tts()
+                
+                ten_env.log_debug(f"Flush completed, now using queue_{next_queue_id}")
+                
+                flush_result = Data.create(DATA_FLUSH_RESULT)
+                json_data = json.dumps(
+                    {
+                        "flush_id": t.flush_id,
+                        "metadata": t.metadata,
+                    }
+                )
+                flush_result.set_property_from_json(None, json_data)
 
-            ten_env.log_info(
-                f"send tts_flush_end {json_data}",
-                category=LOG_CATEGORY_KEY_POINT,
-            )
-            await ten_env.send_data(flush_result)
-            ten_env.log_debug("on_data sent flush result")
+                ten_env.log_info(
+                    f"send tts_flush_end {json_data}",
+                    category=LOG_CATEGORY_KEY_POINT,
+                )
+                await ten_env.send_data(flush_result)
+                ten_env.log_debug("on_data sent flush result")
+            except Exception as e:
+                ten_env.log_error(f"error during flush processing, {traceback.format_exc()}")
+            finally:
+                # Always reset the flush flag, even if an exception occurred
+                self.receive_flush = False
+                ten_env.log_debug("Flush flag reset")
 
     async def _flush_input_items(self):
         """Flushes the current active queue and cancels the current task."""
@@ -203,6 +214,11 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             t: TTSTextInput = await current_queue.get()
             if t is None:
                 break
+
+            # Wait for flush to complete if it's in progress
+            while self.receive_flush:
+                ten_env.log_debug(f"Waiting for flush to complete before processing request {t.request_id}")
+                await asyncio.sleep(0.01)  # Small delay to avoid busy waiting
 
             try:
                 await self.request_tts(t)

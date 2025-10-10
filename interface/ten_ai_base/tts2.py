@@ -49,11 +49,13 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     def __init__(self, name: str):
         super().__init__(name)
         self.ten_env: AsyncTenEnv = None  # type: ignore
-        self.input_queue = AsyncQueue()
+        self.input_queue_0 = AsyncQueue()  # First queue
+        self.input_queue_1 = AsyncQueue()  # Second queue
         self.current_task = None
         self.loop_task = None
         self.leftover_bytes = b""
         self.session_id = None
+        self.queue_id = 0  # Current active queue ID (0 or 1)
 
         # metrics every 5 seconds
         self.output_characters = 0
@@ -83,10 +85,20 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self._flush_input_items()
         if self.loop_task:
             self.loop_task.cancel()
-        await self.input_queue.put(None)  # Signal the loop to stop processing
+        # Signal both queues to stop processing
+        await self.input_queue_0.put(None)
+        await self.input_queue_1.put(None)
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(ten_env)
+
+    def _get_current_queue(self) -> AsyncQueue:
+        """Get the current active queue based on queue_id."""
+        return self.input_queue_0 if self.queue_id % 2 == 0 else self.input_queue_1
+
+    def _get_queue_by_id(self, queue_id: int) -> AsyncQueue:
+        """Get queue by queue_id."""
+        return self.input_queue_0 if queue_id % 2 == 0 else self.input_queue_1
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
         cmd_name = cmd.get_name()
@@ -114,8 +126,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 f"on_data tts_text_input:  {json.dumps(json.loads(data_payload), ensure_ascii=False)}",
                 category=LOG_CATEGORY_KEY_POINT,
             )
-            # Start an asynchronous task for handling tts
-            await self.input_queue.put(t)
+            # Put into current active queue based on queue_id
+            current_queue = self._get_current_queue()
+            await current_queue.put(t)
+            ten_env.log_debug(f"tts_text_input put into queue_{self.queue_id % 2}: {t.request_id}")
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
             if err:
@@ -130,7 +144,24 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 f"receive tts_flush {data_payload} ",
                 category=LOG_CATEGORY_KEY_POINT,
             )
-            await self._flush_input_items()
+            
+            # Atomic operation: switch to next queue and flush current queue
+            current_queue_id = self.queue_id % 2
+            self.queue_id += 1  # Switch to next queue
+            next_queue_id = self.queue_id % 2
+            
+            ten_env.log_debug(f"Flush started, switching from queue_{current_queue_id} to queue_{next_queue_id}")
+            
+            # Flush current queue and cancel current task
+            current_queue = self._get_queue_by_id(current_queue_id)
+            await current_queue.flush()
+            await self._cancel_current_task()
+            
+            # Call subclass cancel_tts method
+            await self.cancel_tts()
+            
+            ten_env.log_debug(f"Flush completed, now using queue_{next_queue_id}")
+            
             flush_result = Data.create(DATA_FLUSH_RESULT)
             json_data = json.dumps(
                 {
@@ -148,9 +179,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             ten_env.log_debug("on_data sent flush result")
 
     async def _flush_input_items(self):
-        """Flushes the self.queue and cancels the current task."""
-        # Flush the queue using the new flush method
-        await self.input_queue.flush()
+        """Flushes the current active queue and cancels the current task."""
+        # Flush the current active queue
+        current_queue = self._get_current_queue()
+        await current_queue.flush()
 
         # Cancel the current task if one is running
         await self._cancel_current_task()
@@ -162,11 +194,13 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             self.current_task = None
         self.leftover_bytes = b""
 
+
     async def _process_input_queue(self, ten_env: AsyncTenEnv) -> None:
         """Asynchronously process queue items one by one."""
         while True:
-            # Wait for an item to be available in the queue
-            t: TTSTextInput = await self.input_queue.get()
+            # Wait for an item to be available in the current active queue
+            current_queue = self._get_current_queue()
+            t: TTSTextInput = await current_queue.get()
             if t is None:
                 break
 
@@ -424,6 +458,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         This is used for metrics and error reporting.
         """
         raise NotImplementedError("This method should be implemented in subclasses.")
+
+    @abstractmethod
+    async def cancel_tts(self) -> None:
+        """
+        Called when a flush request is received. Override this method to implement TTS-specific cancellation logic.
+        This method is called after flushing the input queue and cancelling the current task.
+        """
+        pass
 
     @abstractmethod
     async def request_tts(self, t: TTSTextInput) -> None:

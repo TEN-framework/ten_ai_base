@@ -57,6 +57,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.session_id = None
         self.queue_id = 0  # Current active queue ID (0 or 1)
         self.receive_flush = False
+        self._queue_lock = asyncio.Lock()  # Protect queue_id access
+        self._flush_event = asyncio.Event()  # Signal flush completion
+        self._flush_event.set()  # Initially set to allow processing
 
         # metrics every 5 seconds
         self.output_characters = 0
@@ -93,9 +96,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(ten_env)
 
-    def _get_current_queue(self) -> AsyncQueue:
+    async def _get_current_queue(self) -> AsyncQueue:
         """Get the current active queue based on queue_id."""
-        return self.input_queue_0 if self.queue_id % 2 == 0 else self.input_queue_1
+        async with self._queue_lock:
+            return self.input_queue_0 if self.queue_id % 2 == 0 else self.input_queue_1
 
     def _get_queue_by_id(self, queue_id: int) -> AsyncQueue:
         """Get queue by queue_id."""
@@ -128,9 +132,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 category=LOG_CATEGORY_KEY_POINT,
             )
             # Put into current active queue based on queue_id
-            current_queue = self._get_current_queue()
+            current_queue = await self._get_current_queue()
             await current_queue.put(t)
-            ten_env.log_debug(f"tts_text_input put into queue_{self.queue_id % 2}: {t.request_id}")
+            async with self._queue_lock:
+                ten_env.log_debug(f"tts_text_input put into queue_{self.queue_id % 2}: {t.request_id}")
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
             if err:
@@ -141,7 +146,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             except Exception as e:
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
                 return
-                
+
             ten_env.log_info(
                 f"receive tts_flush {data_payload} ",
                 category=LOG_CATEGORY_KEY_POINT,
@@ -149,24 +154,26 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             
             # Set flush flag and ensure it's reset even if crash occurs
             self.receive_flush = True
+            self._flush_event.clear()  # Clear the event to signal flush start
             try:
-                # Atomic operation: switch to next queue and flush current queue
-                current_queue_id = self.queue_id % 2
-                self.queue_id += 1  # Switch to next queue
-                next_queue_id = self.queue_id % 2
-                
-                ten_env.log_debug(f"Flush started, switching from queue_{current_queue_id} to queue_{next_queue_id}")
-                
-                # Flush current queue and cancel current task
-                current_queue = self._get_queue_by_id(current_queue_id)
-                await current_queue.flush()
-                await self._cancel_current_task()
-                
+                async with self._queue_lock:
+                    # Atomic operation: switch to next queue and flush current queue
+                    current_queue_id = self.queue_id % 2
+                    self.queue_id += 1  # Switch to next queue
+                    next_queue_id = self.queue_id % 2
+
+                    ten_env.log_debug(f"Flush started, switching from queue_{current_queue_id} to queue_{next_queue_id}")
+
+                    # Flush current queue and cancel current task
+                    current_queue = self._get_queue_by_id(current_queue_id)
+                    await current_queue.flush()
+                    await self._cancel_current_task()
+
                 # Call subclass cancel_tts method
                 await self.cancel_tts()
-                
+
                 ten_env.log_debug(f"Flush completed, now using queue_{next_queue_id}")
-                
+
                 flush_result = Data.create(DATA_FLUSH_RESULT)
                 json_data = json.dumps(
                     {
@@ -185,14 +192,15 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             except Exception as e:
                 ten_env.log_error(f"error during flush processing, {traceback.format_exc()}")
             finally:
-                # Always reset the flush flag, even if an exception occurred
+                # Always reset the flush flag and signal completion, even if an exception occurred
                 self.receive_flush = False
-                ten_env.log_debug("Flush flag reset")
+                self._flush_event.set()  # Signal flush completion
+                ten_env.log_debug("Flush flag reset and event set")
 
     async def _flush_input_items(self):
         """Flushes the current active queue and cancels the current task."""
         # Flush the current active queue
-        current_queue = self._get_current_queue()
+        current_queue = await self._get_current_queue()
         await current_queue.flush()
 
         # Cancel the current task if one is running
@@ -210,15 +218,15 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """Asynchronously process queue items one by one."""
         while True:
             # Wait for an item to be available in the current active queue
-            current_queue = self._get_current_queue()
+            current_queue = await self._get_current_queue()
             t: TTSTextInput = await current_queue.get()
             if t is None:
                 break
 
             # Wait for flush to complete if it's in progress
-            while self.receive_flush:
+            if self.receive_flush:
                 ten_env.log_debug(f"Waiting for flush to complete before processing request {t.request_id}")
-                await asyncio.sleep(0.01)  # Small delay to avoid busy waiting
+                await self._flush_event.wait()  # Efficient wait instead of polling
 
             try:
                 await self.request_tts(t)
@@ -476,14 +484,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         raise NotImplementedError("This method should be implemented in subclasses.")
 
     @abstractmethod
-    async def cancel_tts(self) -> None:
-        """
-        Called when a flush request is received. Override this method to implement TTS-specific cancellation logic.
-        This method is called after flushing the input queue and cancelling the current task.
-        """
-        pass
-
-    @abstractmethod
     async def request_tts(self, t: TTSTextInput) -> None:
         """
         Called when a new input item is available in the queue. Override this method to implement the TTS request logic.
@@ -497,6 +497,13 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         Get the input audio sample rate in Hz.
         """
         raise NotImplementedError("This method should be implemented in subclasses.")
+
+    async def cancel_tts(self) -> None:
+        """
+        Called when a flush request is received. Override this method to implement TTS-specific cancellation logic.
+        This method is called after flushing the input queue and cancelling the current task.
+        """
+        pass
 
     def synthesize_audio_channels(self) -> int:
         """

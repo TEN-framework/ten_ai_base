@@ -59,7 +59,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self._queue_lock = asyncio.Lock()  # Protect queue_id access
         self._flush_event = asyncio.Event()  # Signal flush completion
         self._flush_event.set()  # Initially set to allow processing
-        self._queue_switch_sentinel = object()
+        self._queue_switch_sentinel : object = object()
 
         # metrics every 5 seconds
         self.output_characters = 0
@@ -135,7 +135,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 current_queue = self._get_queue_by_id(current_queue_id)
                 ten_env.log_debug(f"tts_text_input put into queue_{current_queue_id % 2}: {t.request_id}")
             
-            await current_queue.put(t)
+                await current_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
             if err:
@@ -157,9 +157,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             try:
                 async with self._queue_lock:
                     # Atomic operation: switch to next queue and flush current queue
-                    current_queue_id = self.queue_id % 2
+                    current_queue_id = self.queue_id
                     self.queue_id += 1  # Switch to next queue
-                    next_queue_id = self.queue_id % 2
+                    next_queue_id = self.queue_id
 
                     ten_env.log_debug(f"Flush started, switching from queue_{current_queue_id} to queue_{next_queue_id}")
 
@@ -196,18 +196,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 # Always reset the flush flag and signal completion, even if an exception occurred
                 self._flush_event.set()  # Signal flush completion
                 ten_env.log_debug("Flush flag reset and event set")
-
-    async def _flush_input_items(self):
-        """Flushes the current active queue and cancels the current task."""
-        # Flush the current active queue
-        async with self._queue_lock:
-            current_queue_id = self.queue_id
-            current_queue = self._get_queue_by_id(current_queue_id)
-        
-        await current_queue.flush()
-
-        # Cancel the current task if one is running
-        await self._cancel_current_task()
 
     async def _cancel_current_task(self) -> None:
         """Called when the TTS request is cancelled."""

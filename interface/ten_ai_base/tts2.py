@@ -96,13 +96,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(ten_env)
 
-    async def _get_current_queue(self) -> AsyncQueue:
-        """Get the current active queue based on queue_id."""
-        async with self._queue_lock:
-            return self.input_queue_0 if self.queue_id % 2 == 0 else self.input_queue_1
-
     def _get_queue_by_id(self, queue_id: int) -> AsyncQueue:
-        """Get queue by queue_id."""
+        """Get queue by queue_id. Safe to call without lock when queue_id is stable."""
         return self.input_queue_0 if queue_id % 2 == 0 else self.input_queue_1
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
@@ -132,10 +127,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 category=LOG_CATEGORY_KEY_POINT,
             )
             # Put into current active queue based on queue_id
-            current_queue = await self._get_current_queue()
-            await current_queue.put(t)
             async with self._queue_lock:
-                ten_env.log_debug(f"tts_text_input put into queue_{self.queue_id % 2}: {t.request_id}")
+                current_queue_id = self.queue_id
+                current_queue = self.input_queue_0 if current_queue_id % 2 == 0 else self.input_queue_1
+                ten_env.log_debug(f"tts_text_input put into queue_{current_queue_id % 2}: {t.request_id}")
+            
+            await current_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
             if err:
@@ -168,8 +165,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     current_queue = self._get_queue_by_id(current_queue_id)
                     await current_queue.flush()
                     await self._cancel_current_task()
+                # Lock released here to avoid potential deadlock
 
-                # Call subclass cancel_tts method
+                # Call subclass cancel_tts method (without lock to prevent deadlock)
                 await self.cancel_tts()
 
                 ten_env.log_debug(f"Flush completed, now using queue_{next_queue_id}")
@@ -200,7 +198,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def _flush_input_items(self):
         """Flushes the current active queue and cancels the current task."""
         # Flush the current active queue
-        current_queue = await self._get_current_queue()
+        async with self._queue_lock:
+            current_queue_id = self.queue_id
+            current_queue = self.input_queue_0 if current_queue_id % 2 == 0 else self.input_queue_1
+        
         await current_queue.flush()
 
         # Cancel the current task if one is running
@@ -216,17 +217,28 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def _process_input_queue(self, ten_env: AsyncTenEnv) -> None:
         """Asynchronously process queue items one by one."""
+        # Cache queue references to reduce lock contention
+        queue_0 = self.input_queue_0
+        queue_1 = self.input_queue_1
+        
         while True:
+            # Store queue_id locally before waiting to avoid TOCTOU race condition
+            async with self._queue_lock:
+                local_queue_id = self.queue_id
+                current_queue = queue_0 if local_queue_id % 2 == 0 else queue_1
+
             # Wait for an item to be available in the current active queue
-            current_queue = await self._get_current_queue()
             t: TTSTextInput = await current_queue.get()
             if t is None:
                 break
 
-            # Wait for flush to complete if it's in progress
-            if self.receive_flush:
-                ten_env.log_debug(f"Waiting for flush to complete before processing request {t.request_id}")
-                await self._flush_event.wait()  # Efficient wait instead of polling
+            # Check if we're still on the same queue after waiting
+            async with self._queue_lock:
+                if local_queue_id != self.queue_id:
+                    # Queue switched during wait, put item back and retry
+                    ten_env.log_debug(f"Queue switched during wait, retrying request {t.request_id}")
+                    await current_queue.put(t)
+                    continue
 
             try:
                 await self.request_tts(t)

@@ -59,6 +59,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self._queue_lock = asyncio.Lock()  # Protect queue_id access
         self._flush_event = asyncio.Event()  # Signal flush completion
         self._flush_event.set()  # Initially set to allow processing
+        self._queue_switch_sentinel = object()
 
         # metrics every 5 seconds
         self.output_characters = 0
@@ -85,9 +86,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # send laster time before stop
         await self.send_usage_metrics()
         await super().on_stop(ten_env)
-        await self._flush_input_items()
-        other_queue = self._get_queue_by_id(self.queue_id + 1)
-        await other_queue.flush()
+
+        await self.input_queue_0.flush()
+        await self.input_queue_1.flush()
+        await self._cancel_current_task()
         if self.loop_task:
             self.loop_task.cancel()
         # Signal both queues to stop processing
@@ -164,6 +166,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     # Flush current queue and cancel current task
                     current_queue = self._get_queue_by_id(current_queue_id)
                     await current_queue.flush()
+                    await current_queue.put(self._queue_switch_sentinel)
                 # Lock released here to avoid potential deadlock
                 await self._cancel_current_task()
 
@@ -230,6 +233,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             t: TTSTextInput = await current_queue.get()
             if t is None:
                 break
+            if t is self._queue_switch_sentinel:
+                ten_env.log_debug("Received queue switch sentinel, re-evaluating active queue")
+                continue
 
             try:
                 await self.request_tts(t)

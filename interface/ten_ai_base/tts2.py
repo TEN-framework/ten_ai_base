@@ -222,23 +222,26 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         queue_1 = self.input_queue_1
         
         while True:
-            # Store queue_id locally before waiting to avoid TOCTOU race condition
+            # Wait for flush to complete if it's in progress
+            if self.receive_flush:
+                ten_env.log_debug("Waiting for flush to complete before processing requests")
+                await self._flush_event.wait()  # Wait for flush completion
+            
+            # Get current active queue after flush completion
             async with self._queue_lock:
-                local_queue_id = self.queue_id
-                current_queue = queue_0 if local_queue_id % 2 == 0 else queue_1
+                current_queue_id = self.queue_id
+                current_queue = queue_0 if current_queue_id % 2 == 0 else queue_1
 
             # Wait for an item to be available in the current active queue
             t: TTSTextInput = await current_queue.get()
             if t is None:
                 break
 
-            # Check if we're still on the same queue after waiting
-            async with self._queue_lock:
-                if local_queue_id != self.queue_id:
-                    # Queue switched during wait, put item back and retry
-                    ten_env.log_debug(f"Queue switched during wait, retrying request {t.request_id}")
-                    await current_queue.put(t)
-                    continue
+            # Double-check: if flush started while we were waiting, wait for it to complete
+            if self.receive_flush:
+                ten_env.log_debug(f"Flush started while waiting, putting back request {t.request_id}")
+                await current_queue.put(t)
+                continue
 
             try:
                 await self.request_tts(t)

@@ -86,6 +86,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.send_usage_metrics()
         await super().on_stop(ten_env)
         await self._flush_input_items()
+        other_queue = self._get_queue_by_id(self.queue_id + 1)
+        await other_queue.flush()
         if self.loop_task:
             self.loop_task.cancel()
         # Signal both queues to stop processing

@@ -56,7 +56,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.leftover_bytes = b""
         self.session_id = None
         self.queue_id = 0  # Current active queue ID (0 or 1)
-        self.receive_flush = False
         self._queue_lock = asyncio.Lock()  # Protect queue_id access
         self._flush_event = asyncio.Event()  # Signal flush completion
         self._flush_event.set()  # Initially set to allow processing
@@ -129,7 +128,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             # Put into current active queue based on queue_id
             async with self._queue_lock:
                 current_queue_id = self.queue_id
-                current_queue = self.input_queue_0 if current_queue_id % 2 == 0 else self.input_queue_1
+                current_queue = self._get_queue_by_id(current_queue_id)
                 ten_env.log_debug(f"tts_text_input put into queue_{current_queue_id % 2}: {t.request_id}")
             
             await current_queue.put(t)
@@ -150,7 +149,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             )
             
             # Set flush flag and ensure it's reset even if crash occurs
-            self.receive_flush = True
             self._flush_event.clear()  # Clear the event to signal flush start
             try:
                 async with self._queue_lock:
@@ -164,8 +162,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     # Flush current queue and cancel current task
                     current_queue = self._get_queue_by_id(current_queue_id)
                     await current_queue.flush()
-                    await self._cancel_current_task()
                 # Lock released here to avoid potential deadlock
+                await self._cancel_current_task()
 
                 # Call subclass cancel_tts method (without lock to prevent deadlock)
                 await self.cancel_tts()
@@ -191,7 +189,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 ten_env.log_error(f"error during flush processing, {traceback.format_exc()}")
             finally:
                 # Always reset the flush flag and signal completion, even if an exception occurred
-                self.receive_flush = False
                 self._flush_event.set()  # Signal flush completion
                 ten_env.log_debug("Flush flag reset and event set")
 
@@ -200,7 +197,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # Flush the current active queue
         async with self._queue_lock:
             current_queue_id = self.queue_id
-            current_queue = self.input_queue_0 if current_queue_id % 2 == 0 else self.input_queue_1
+            current_queue = self._get_queue_by_id(current_queue_id)
         
         await current_queue.flush()
 
@@ -217,31 +214,20 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def _process_input_queue(self, ten_env: AsyncTenEnv) -> None:
         """Asynchronously process queue items one by one."""
-        # Cache queue references to reduce lock contention
-        queue_0 = self.input_queue_0
-        queue_1 = self.input_queue_1
         
         while True:
             # Wait for flush to complete if it's in progress
-            if self.receive_flush:
-                ten_env.log_debug("Waiting for flush to complete before processing requests")
-                await self._flush_event.wait()  # Wait for flush completion
+            await self._flush_event.wait()  # Wait for flush completion
             
             # Get current active queue after flush completion
             async with self._queue_lock:
                 current_queue_id = self.queue_id
-                current_queue = queue_0 if current_queue_id % 2 == 0 else queue_1
+                current_queue = self._get_queue_by_id(current_queue_id)
 
             # Wait for an item to be available in the current active queue
             t: TTSTextInput = await current_queue.get()
             if t is None:
                 break
-
-            # Double-check: if flush started while we were waiting, wait for it to complete
-            if self.receive_flush:
-                ten_env.log_debug(f"Flush started while waiting, putting back request {t.request_id}")
-                await current_queue.put(t)
-                continue
 
             try:
                 await self.request_tts(t)

@@ -59,7 +59,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self._queue_lock = asyncio.Lock()  # Protect queue_id access
         self._flush_event = asyncio.Event()  # Signal flush completion
         self._flush_event.set()  # Initially set to allow processing
-        self._queue_switch_sentinel : object = object()
+        self._queue_switch_sentinel: object = object()
 
         # metrics every 5 seconds
         self.output_characters = 0
@@ -158,7 +158,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 async with self._queue_lock:
                     # Atomic operation: switch to next queue and flush current queue
                     current_queue_id = self.queue_id
-                    self.queue_id += 1  # Switch to next queue
+                    self.queue_id = (current_queue_id + 1) % 2  # Switch to next queue
                     next_queue_id = self.queue_id
 
                     ten_env.log_debug(f"Flush started, switching from queue_{current_queue_id} to queue_{next_queue_id}")
@@ -209,11 +209,11 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """Asynchronously process queue items one by one."""
         
         while True:
-            # Wait for flush to complete if it's in progress
-            await self._flush_event.wait()  # Wait for flush completion
             
             # Get current active queue after flush completion
             async with self._queue_lock:
+                 # Wait for flush to complete if it's in progress
+                await self._flush_event.wait()  # Wait for flush completion
                 current_queue_id = self.queue_id
                 current_queue = self._get_queue_by_id(current_queue_id)
 

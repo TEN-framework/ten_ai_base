@@ -141,7 +141,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             json_data = json.dumps(
                 {
                     "flush_id": t.flush_id,
-                    "metadata": self.metadatas.get(t.request_id) or t.metadata,
+                    "metadata": self.metadatas.get(self.request_id) or t.metadata,
                 }
             )
             flush_result.set_property_from_json(None, json_data)

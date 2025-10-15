@@ -54,6 +54,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.loop_task = None
         self.leftover_bytes = b""
         self.session_id = None
+        self.metadatas = {}
+        self.request_id = ""
 
         # metrics every 5 seconds
         self.output_characters = 0
@@ -114,6 +116,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 f"on_data tts_text_input:  {json.dumps(json.loads(data_payload), ensure_ascii=False)}",
                 category=LOG_CATEGORY_KEY_POINT,
             )
+            #update request_id and metadata
+            if t.request_id != self.request_id:
+                self.request_id = t.request_id
+                self.metadatas[t.request_id] = t.metadata
             # Start an asynchronous task for handling tts
             await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
@@ -135,7 +141,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             json_data = json.dumps(
                 {
                     "flush_id": t.flush_id,
-                    "metadata": t.metadata,
+                    "metadata": self.metadatas.get(t.request_id) or {},
                 }
             )
             flush_result.set_property_from_json(None, json_data)
@@ -229,22 +235,15 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         turn_id: int = -1,
         extra_metadata: dict = None,
     ) -> None:
-        # basic metadata
-        metadata = {
-            "session_id": self.session_id or "",
-            "turn_id": turn_id,
-        }
-
         # if there is extra metadata, add it to the basic metadata
-        if extra_metadata:
-            metadata.update(extra_metadata)
+        new_metadata = self.update_metadata(request_id, extra_metadata)
 
         metrics = ModuleMetrics(
             id=self.get_uuid(),
             module=ModuleType.TTS,
             vendor=self.vendor(),
             metrics={ModuleMetricKey.TTS_TTFB: ttfb_ms},
-            metadata=metadata,
+            metadata=new_metadata,
         )
         self.ten_env.log_info(
             f"tts_ttfb:  {ttfb_ms} of request_id: {request_id}",
@@ -252,15 +251,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         )
         await self.send_metrics(metrics, request_id)
 
-    async def send_tts_audio_start(self, request_id: str, turn_id: int = -1) -> None:
+    async def send_tts_audio_start(self, request_id: str, turn_id: int = -1, extra_metadata: dict = None) -> None:
+        new_metadata = self.update_metadata(request_id, extra_metadata)
+
         data = Data.create("tts_audio_start")
         json_data = json.dumps(
             {
                 "request_id": request_id,
-                "metadata": {
-                    "session_id": self.session_id or "",
-                    "turn_id": turn_id,
-                },
+                "metadata": new_metadata,
             }
         )
         data.set_property_from_json(None, json_data)
@@ -277,7 +275,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         request_total_audio_duration_ms: int,
         turn_id: int = -1,
         reason: TTSAudioEndReason = TTSAudioEndReason.REQUEST_END,
+        extra_metadata: dict = None,
     ) -> None:
+        new_metadata = self.update_metadata(request_id, extra_metadata)
         data = Data.create("tts_audio_end")
         json_data = json.dumps(
             {
@@ -285,10 +285,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 "request_event_interval_ms": request_event_interval_ms,
                 "request_total_audio_duration_ms": request_total_audio_duration_ms,
                 "reason": reason.value,
-                "metadata": {
-                    "session_id": self.session_id or "",
-                    "turn_id": turn_id,
-                },
+                "metadata": new_metadata,
             }
         )
         data.set_property_from_json(None, json_data)
@@ -303,7 +300,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         request_id: str | None,
         error: ModuleError,
         turn_id: int = -1,
+        extra_metadata: dict = None,
     ) -> None:
+        new_metadata = self.update_metadata(request_id, extra_metadata)
         """
         Send an error message related to TTS processing.
         """
@@ -324,10 +323,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 "module": ModuleType.TTS,
                 "message": error.message,
                 "vendor_info": vendorInfo or {},
-                "metadata": {
-                    "session_id": self.session_id or "",
-                    "turn_id": turn_id,
-                },
+                "metadata": new_metadata,
             }
         )
         error_data.set_property_from_json(
@@ -344,7 +340,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.send_usage_metrics(request_id)
 
     # send when tts audio end
-    async def send_usage_metrics(self, request_id: str = ""):
+    async def send_usage_metrics(self, request_id: str = "", extra_metadata: dict = None):
+        new_metadata = self.update_metadata(request_id, extra_metadata)
         await self.metrics_calculate_duration()
         metrics = ModuleMetrics(
             id=self.get_uuid(),
@@ -358,6 +355,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 "total_input_characters": self.total_input_characters,
                 "total_recv_audio_duration": self.total_recv_audio_duration,
             },
+            metadata=new_metadata,
         )
         await self.send_metrics(metrics, request_id)
         self.metrics_reset()
@@ -403,8 +401,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.recv_audio_duration = 0
         self.recv_audio_chunks_len = 0
 
-    async def metrics_connect_delay(self, connect_delay_ms: int):
-        data = Data.create("metrics")
+    async def metrics_connect_delay(self, connect_delay_ms: int, extra_metadata: dict = None):
+        new_metadata = self.update_metadata(request_id, extra_metadata)
         metrics = ModuleMetrics(
             id=self.get_uuid(),
             module=ModuleType.TTS,
@@ -412,10 +410,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             metrics={
                 "connect_delay": connect_delay_ms,
             },
+            metadata=new_metadata,
         )
+        self.send_metrics(metrics, self.request_id)
         self.ten_env.log_debug(f"metrics_connect_delay: {metrics}")
-        data.set_property_from_json(None, metrics.model_dump_json())
-        await self.ten_env.send_data(data)
 
     @abstractmethod
     def vendor(self) -> str:
@@ -459,3 +457,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         Get a unique identifier
         """
         return uuid.uuid4().hex
+
+    def update_metadata(self,request_id: str, metadata: dict) -> dict:
+        new_metadata = self.metadatas.get(request_id) or {}
+        if new_metadata is None:
+            new_metadata = {}
+        new_metadata.update(metadata)
+        return new_metadata

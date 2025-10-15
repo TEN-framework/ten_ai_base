@@ -209,16 +209,16 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """Asynchronously process queue items one by one."""
         
         while True:
-            
+            # Wait for flush to complete if it's in progress
+            await self._flush_event.wait()  # Wait for flush completion
+
             # Get current active queue after flush completion
             async with self._queue_lock:
-                 # Wait for flush to complete if it's in progress
-                await self._flush_event.wait()  # Wait for flush completion
                 current_queue_id = self.queue_id
                 current_queue = self._get_queue_by_id(current_queue_id)
 
             # Wait for an item to be available in the current active queue
-            t: TTSTextInput = await current_queue.get()
+            t = await current_queue.get()
             if t is None:
                 break
             if t is self._queue_switch_sentinel:

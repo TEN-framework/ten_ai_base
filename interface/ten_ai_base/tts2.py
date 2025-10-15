@@ -251,7 +251,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         )
         await self.send_metrics(metrics, request_id)
 
-    async def send_tts_audio_start(self, request_id: str, turn_id: int = -1, extra_metadata: dict | None = None) -> None:
+    async def send_tts_audio_start(
+        self, request_id: str, turn_id: int = -1, extra_metadata: dict | None = None
+    ) -> None:
         new_metadata = self.update_metadata(request_id, extra_metadata)
 
         data = Data.create("tts_audio_start")
@@ -341,7 +343,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.send_usage_metrics(request_id)
 
     # send when tts audio end
-    async def send_usage_metrics(self, request_id: str = "", extra_metadata: dict | None = None):
+    async def send_usage_metrics(
+        self, request_id: str = "", extra_metadata: dict | None = None
+    ):
         new_metadata = self.update_metadata(request_id, extra_metadata)
         await self.metrics_calculate_duration()
         metrics = ModuleMetrics(
@@ -402,7 +406,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.recv_audio_duration = 0
         self.recv_audio_chunks_len = 0
 
-    async def metrics_connect_delay(self, connect_delay_ms: int, extra_metadata: dict | None = None):
+    async def metrics_connect_delay(
+        self, connect_delay_ms: int, extra_metadata: dict | None = None
+    ):
         new_metadata = self.update_metadata(self.request_id, extra_metadata)
         metrics = ModuleMetrics(
             id=self.get_uuid(),

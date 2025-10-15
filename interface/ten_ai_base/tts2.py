@@ -116,7 +116,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 f"on_data tts_text_input:  {json.dumps(json.loads(data_payload), ensure_ascii=False)}",
                 category=LOG_CATEGORY_KEY_POINT,
             )
-            #update request_id and metadata
+            # Update request_id and store metadata when a new request arrives
             if t.request_id != self.request_id:
                 self.request_id = t.request_id
                 self.metadatas[t.request_id] = t.metadata
@@ -294,6 +294,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         await self.ten_env.send_data(data)
+        self.metadatas.pop(request_id)
 
     async def send_tts_error(
         self,
@@ -402,7 +403,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.recv_audio_chunks_len = 0
 
     async def metrics_connect_delay(self, connect_delay_ms: int, extra_metadata: dict = None):
-        new_metadata = self.update_metadata(request_id, extra_metadata)
+        new_metadata = self.update_metadata(self.request_id, extra_metadata)
         metrics = ModuleMetrics(
             id=self.get_uuid(),
             module=ModuleType.TTS,
@@ -412,7 +413,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             },
             metadata=new_metadata,
         )
-        self.send_metrics(metrics, self.request_id)
+        await self.send_metrics(metrics, self.request_id)
         self.ten_env.log_debug(f"metrics_connect_delay: {metrics}")
 
     @abstractmethod
@@ -458,9 +459,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """
         return uuid.uuid4().hex
 
-    def update_metadata(self,request_id: str, metadata: dict) -> dict:
-        new_metadata = self.metadatas.get(request_id) or {}
-        if new_metadata is None:
-            new_metadata = {}
-        new_metadata.update(metadata)
+    def update_metadata(self, request_id: str, metadata: dict) -> dict:
+        new_metadata = self.metadatas.get(request_id, {}).copy()
+        if metadata:
+            new_metadata.update(metadata)
         return new_metadata

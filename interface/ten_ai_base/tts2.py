@@ -465,7 +465,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     def update_metadata(self, request_id: str, metadata: dict | None) -> dict:
         new_metadata = {}
-        if request_id in self.metadatas:
+        if request_id and request_id in self.metadatas:
             new_metadata = self.metadatas.get(request_id).copy()
         if metadata:
             new_metadata.update(metadata)

@@ -55,6 +55,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.leftover_bytes = b""
         self.session_id = None
         self.metadatas = {}
+        self._is_flushing = False
+        self._queue_flushed_event = asyncio.Event()  # allow put after flush queue is flushed
+        self._flush_complete_event = asyncio.Event()  # allow get after flush is complete
 
         # metrics every 5 seconds
         self.output_characters = 0
@@ -119,6 +122,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             if not t.request_id in self.metadatas:
                 self.metadatas[t.request_id] = t.metadata
             # Start an asynchronous task for handling tts
+            # Wait for queue to be flushed before allowing new items to be queued
+            if self._is_flushing:
+                await self._queue_flushed_event.wait()
             await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
@@ -134,7 +140,17 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 f"receive tts_flush {data_payload} ",
                 category=LOG_CATEGORY_KEY_POINT,
             )
+            # Set flushing state to block put and get operations
+            self._is_flushing = True
+            self._queue_flushed_event.clear()
+            self._flush_complete_event.clear()
+            
             await self._flush_input_items()
+            
+            # Allow put operations after queue is flushed
+            self._queue_flushed_event.set()
+            
+            # Keep get blocked until flush result is sent
             flush_result = Data.create(DATA_FLUSH_RESULT)
             json_data = json.dumps(
                 {
@@ -149,6 +165,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 category=LOG_CATEGORY_KEY_POINT,
             )
             await ten_env.send_data(flush_result)
+            
+            # Complete flush process - allow get operations to resume
+            self._is_flushing = False
+            self._flush_complete_event.set()
             ten_env.log_debug("on_data sent flush result")
 
     async def _flush_input_items(self):
@@ -170,6 +190,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """Asynchronously process queue items one by one."""
         while True:
             # Wait for an item to be available in the queue
+            # Block get operations during flush until flush is completely finished
+            if self._is_flushing:
+                await self._flush_complete_event.wait()
             t: TTSTextInput = await self.input_queue.get()
             if t is None:
                 break
@@ -470,3 +493,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         if metadata:
             new_metadata.update(metadata)
         return new_metadata
+
+    async def cancel_tts(self) -> None:
+        """
+        Called when a flush request is received. Override this method to implement TTS-specific cancellation logic.
+        This method is called after flushing the input queue and cancelling the current task.
+        """
+        pass

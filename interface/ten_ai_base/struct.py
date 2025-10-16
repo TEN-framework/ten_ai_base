@@ -69,7 +69,7 @@ class TextContent(BaseModel):
 
 
 class ImageURL(BaseModel):
-    url: HttpUrl  # or data:image/png;base64,...
+    url: str  # or data:image/png;base64,...
     detail: Optional[Literal["auto", "low", "high"]] = "auto"
 
 
@@ -125,7 +125,7 @@ class LLMRequest(BaseModel):
     This model is used to define the structure of the input data for LLM operations.
     """
     request_id: str
-    model: str
+    model: Optional[str] = None
     messages: list[LLMMessage]
     streaming: Optional[bool] = True
     tools: Optional[list[LLMToolMetadata]] = None

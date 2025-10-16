@@ -55,7 +55,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.leftover_bytes = b""
         self.session_id = None
         self.metadatas = {}
-        self._is_flushing = False
         self._queue_flushed_event = asyncio.Event()  # allow put after flush queue is flushed
         self._flush_complete_event = asyncio.Event()  # allow get after flush is complete
         self._queue_flushed_event.set()  # Initially allow puts
@@ -124,8 +123,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 self.metadatas[t.request_id] = t.metadata
             # Start an asynchronous task for handling tts
             # Wait for queue to be flushed before allowing new items to be queued
-            while self._is_flushing:
-                await self._queue_flushed_event.wait()
+            await self._queue_flushed_event.wait()
             await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
@@ -142,7 +140,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 category=LOG_CATEGORY_KEY_POINT,
             )
             # Set flushing state to block put and get operations
-            self._is_flushing = True
             self._queue_flushed_event.clear()
             self._flush_complete_event.clear()
             
@@ -168,7 +165,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             await ten_env.send_data(flush_result)
             
             # Complete flush process - allow get operations to resume
-            self._is_flushing = False
             self._flush_complete_event.set()
             ten_env.log_debug("on_data sent flush result")
 
@@ -192,8 +188,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         while True:
             # Wait for an item to be available in the queue
             # Block get operations during flush until flush is completely finished
-            while self._is_flushing:
-                await self._flush_complete_event.wait()
+            await self._flush_complete_event.wait()
             t: TTSTextInput = await self.input_queue.get()
             if t is None:
                 break

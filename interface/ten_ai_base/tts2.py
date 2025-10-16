@@ -55,7 +55,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.leftover_bytes = b""
         self.session_id = None
         self.metadatas = {}
-        self.request_id = ""
 
         # metrics every 5 seconds
         self.output_characters = 0
@@ -117,8 +116,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 category=LOG_CATEGORY_KEY_POINT,
             )
             # Update request_id and store metadata when a new request arrives
-            if t.request_id != self.request_id:
-                self.request_id = t.request_id
+            if not t.request_id in self.metadatas:
                 self.metadatas[t.request_id] = t.metadata
             # Start an asynchronous task for handling tts
             await self.input_queue.put(t)
@@ -141,7 +139,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             json_data = json.dumps(
                 {
                     "flush_id": t.flush_id,
-                    "metadata": self.metadatas.get(self.request_id) or t.metadata,
+                    "metadata": t.metadata,
                 }
             )
             flush_result.set_property_from_json(None, json_data)
@@ -407,9 +405,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.recv_audio_chunks_len = 0
 
     async def metrics_connect_delay(
-        self, connect_delay_ms: int, extra_metadata: dict | None = None
+        self, connect_delay_ms: int, extra_metadata: dict | None = None, request_id: str = ""
     ):
-        new_metadata = self.update_metadata(self.request_id, extra_metadata)
+        new_metadata = self.update_metadata(request_id, extra_metadata)
         metrics = ModuleMetrics(
             id=self.get_uuid(),
             module=ModuleType.TTS,
@@ -419,7 +417,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             },
             metadata=new_metadata,
         )
-        await self.send_metrics(metrics, self.request_id)
+        await self.send_metrics(metrics, request_id)
         self.ten_env.log_debug(f"metrics_connect_delay: {metrics}")
 
     @abstractmethod

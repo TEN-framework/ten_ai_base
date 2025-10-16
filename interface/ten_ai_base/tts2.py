@@ -58,7 +58,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self._is_flushing = False
         self._queue_flushed_event = asyncio.Event()  # allow put after flush queue is flushed
         self._flush_complete_event = asyncio.Event()  # allow get after flush is complete
-
+        self._queue_flushed_event.set()  # Initially allow puts
+        self._flush_complete_event.set()  # Initially allow gets
         # metrics every 5 seconds
         self.output_characters = 0
         self.input_characters = 0
@@ -123,7 +124,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 self.metadatas[t.request_id] = t.metadata
             # Start an asynchronous task for handling tts
             # Wait for queue to be flushed before allowing new items to be queued
-            if self._is_flushing:
+            while self._is_flushing:
                 await self._queue_flushed_event.wait()
             await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
@@ -191,7 +192,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         while True:
             # Wait for an item to be available in the queue
             # Block get operations during flush until flush is completely finished
-            if self._is_flushing:
+            while self._is_flushing:
                 await self._flush_complete_event.wait()
             t: TTSTextInput = await self.input_queue.get()
             if t is None:

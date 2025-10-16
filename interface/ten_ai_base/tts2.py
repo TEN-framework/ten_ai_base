@@ -59,6 +59,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self._flush_complete_event = asyncio.Event()  # allow get after flush is complete
         self._queue_flushed_event.set()  # Initially allow puts
         self._flush_complete_event.set()  # Initially allow gets
+        self._flush_lock = asyncio.Lock()  # Prevent concurrent flush operations
         # metrics every 5 seconds
         self.output_characters = 0
         self.input_characters = 0
@@ -139,34 +140,43 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 f"receive tts_flush {data_payload} ",
                 category=LOG_CATEGORY_KEY_POINT,
             )
-            # Set flushing state to block put and get operations
-            self._queue_flushed_event.clear()
-            self._flush_complete_event.clear()
-            
-            await self._flush_input_items()
-            
-            # Allow put operations after queue is flushed
-            self._queue_flushed_event.set()
-            
-            # Keep get blocked until flush result is sent
-            flush_result = Data.create(DATA_FLUSH_RESULT)
-            json_data = json.dumps(
-                {
-                    "flush_id": t.flush_id,
-                    "metadata": t.metadata,
-                }
-            )
-            flush_result.set_property_from_json(None, json_data)
+            # Use lock to prevent concurrent flush operations
+            async with self._flush_lock:
+                try:
+                    # Set flushing state to block put and get operations
+                    self._queue_flushed_event.clear()
+                    self._flush_complete_event.clear()
+                    
+                    await self._flush_input_items()
+                    
+                    # Allow put operations after queue is flushed
+                    self._queue_flushed_event.set()
+                    
+                    # Keep get blocked until flush result is sent
+                    flush_result = Data.create(DATA_FLUSH_RESULT)
+                    json_data = json.dumps(
+                        {
+                            "flush_id": t.flush_id,
+                            "metadata": t.metadata,
+                        }
+                    )
+                    flush_result.set_property_from_json(None, json_data)
 
-            ten_env.log_info(
-                f"send tts_flush_end {json_data}",
-                category=LOG_CATEGORY_KEY_POINT,
-            )
-            await ten_env.send_data(flush_result)
-            
-            # Complete flush process - allow get operations to resume
-            self._flush_complete_event.set()
-            ten_env.log_debug("on_data sent flush result")
+                    ten_env.log_info(
+                        f"send tts_flush_end {json_data}",
+                        category=LOG_CATEGORY_KEY_POINT,
+                    )
+                    await ten_env.send_data(flush_result)
+                    
+                    # Complete flush process - allow get operations to resume
+                    self._flush_complete_event.set()
+                    ten_env.log_debug("on_data sent flush result")
+                except Exception as e:
+                    # Ensure events are set even if flush fails
+                    self._queue_flushed_event.set()
+                    self._flush_complete_event.set()
+                    ten_env.log_error(f"Flush operation failed: {e}")
+                    raise
 
     async def _flush_input_items(self):
         """Flushes the self.queue and cancels the current task."""

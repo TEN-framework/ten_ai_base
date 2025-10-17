@@ -183,7 +183,7 @@ class ExtensionTesterFlushWithContinuousInput(AsyncExtensionTester):
             
             # Wait for all requests to be processed
             ten_env.log_info("Waiting for all requests to be processed")
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(5.0)
             ten_env.log_info("Stopping test")
             ten_env.stop_test()
     

@@ -122,7 +122,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             # Start an asynchronous task for handling tts
             # Wait for queue to be flushed before allowing new items to be queued
             await self._flush_complete_event.wait()
-            self.ten_env.log_debug("on_data tts_text_input: flush complete, put tts_text_input to queue")
+            self.ten_env.log_debug(f"on_data tts_text_input put to queue: {json.dumps(json.loads(data_payload), ensure_ascii=False)}")
             await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
@@ -140,12 +140,11 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             )
             # Use lock to prevent concurrent flush operations
             try:
-                # Set flushing state to block put and get operations
+                # Set flushing state to block put operations
                 self._flush_complete_event.clear()
                 
                 await self._flush_input_items()
 
-                # Keep get blocked until flush result is sent
                 flush_result = Data.create(DATA_FLUSH_RESULT)
                 json_data = json.dumps(
                     {
@@ -174,9 +173,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """Flushes the self.queue and cancels the current task."""
         # Flush the queue using the new flush method
         await self.input_queue.flush()
-        await self.cancel_tts()
         # Cancel the current task if one is running
         await self._cancel_current_task()
+        await self.cancel_tts()
 
     async def _cancel_current_task(self) -> None:
         """Called when the TTS request is cancelled."""
@@ -189,7 +188,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """Asynchronously process queue items one by one."""
         while True:
             # Wait for an item to be available in the queue
-            # Block get operations during flush until flush is completely finished
             t: TTSTextInput = await self.input_queue.get()
             if t is None:
                 break

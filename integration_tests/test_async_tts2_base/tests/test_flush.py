@@ -16,39 +16,8 @@ from ten_runtime import (
     AudioFrameDataFmt,
 )
 
-import pytest
 import asyncio
 import json
-import math
-from ten_ai_base.tts2 import AsyncTTS2BaseExtension
-from ten_ai_base.struct import TTSTextInput, TTSFlush
-
-
-class TestTTS2Extension(AsyncTTS2BaseExtension):
-    """Test TTS extension class that can control flush timing"""
-    
-    def __init__(self, name: str, flush_delay: float = 0.0):
-        super().__init__(name)
-        self.flush_delay = flush_delay
-        self.processed_requests = []
-    
-    def vendor(self) -> str:
-        return "test_vendor"
-    
-    async def request_tts(self, t: TTSTextInput) -> None:
-        """Process TTS request"""
-        self.processed_requests.append(t.request_id)
-        # Simulate TTS processing time
-        await asyncio.sleep(0.1)
-    
-    def synthesize_audio_sample_rate(self) -> int:
-        return 16000
-    
-    async def cancel_tts(self) -> None:
-        """Override cancel_tts method to add delay"""
-        if self.flush_delay > 0:
-            await asyncio.sleep(self.flush_delay)
-
 
 class ExtensionTesterFlush(AsyncExtensionTester):
     def __init__(self, sample_rate) -> None:

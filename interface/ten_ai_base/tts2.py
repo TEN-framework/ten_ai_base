@@ -57,6 +57,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.metadatas = {}
         self._flush_complete_event = asyncio.Event()  # allow get after flush is complete
         self._flush_complete_event.set()  # Initially allow gets
+        self._put_lock = asyncio.Lock()  # Protect put operations from race conditions
         # metrics every 5 seconds
         self.output_characters = 0
         self.input_characters = 0
@@ -113,7 +114,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
                 return
             self.ten_env.log_info(
-                f"on_data tts_text_input:  {json.dumps(json.loads(data_payload), ensure_ascii=False)}",
+                f"on_data tts_text_input:  {data_payload}",
                 category=LOG_CATEGORY_KEY_POINT,
             )
             # Update request_id and store metadata when a new request arrives
@@ -121,9 +122,11 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 self.metadatas[t.request_id] = t.metadata
             # Start an asynchronous task for handling tts
             # Wait for queue to be flushed before allowing new items to be queued
-            await self._flush_complete_event.wait()
-            self.ten_env.log_debug(f"on_data tts_text_input put to queue: {json.dumps(json.loads(data_payload), ensure_ascii=False)}")
-            await self.input_queue.put(t)
+            # Use lock to prevent race condition between wait and put
+            async with self._put_lock:
+                await self._flush_complete_event.wait()
+                self.ten_env.log_debug(f"on_data tts_text_input put to queue: {data_payload}")
+                await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
             if err:
@@ -493,5 +496,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """
         Called when a flush request is received. Override this method to implement TTS-specific cancellation logic.
         This method is called after flushing the input queue and cancelling the current task.
+        cancel_tts() implementations should be fast to avoid blocking the main thread for too long.
         """
         pass

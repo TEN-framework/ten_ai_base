@@ -55,7 +55,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.leftover_bytes = b""
         self.session_id = None
         self.metadatas = {}
-
+        self._flush_complete_event = asyncio.Event()  # allow get after flush is complete
+        self._flush_complete_event.set()  # Initially allow gets
+        self._put_lock = asyncio.Lock()  # Protect put operations from race conditions
         # metrics every 5 seconds
         self.output_characters = 0
         self.input_characters = 0
@@ -112,14 +114,19 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
                 return
             self.ten_env.log_info(
-                f"on_data tts_text_input:  {json.dumps(json.loads(data_payload), ensure_ascii=False)}",
+                f"on_data tts_text_input:  {data_payload}",
                 category=LOG_CATEGORY_KEY_POINT,
             )
             # Update request_id and store metadata when a new request arrives
             if not t.request_id in self.metadatas:
                 self.metadatas[t.request_id] = t.metadata
             # Start an asynchronous task for handling tts
-            await self.input_queue.put(t)
+            # Wait for queue to be flushed before allowing new items to be queued
+            # Use lock to prevent race condition between wait and put
+            async with self._put_lock:
+                await self._flush_complete_event.wait()
+                self.ten_env.log_debug(f"on_data tts_text_input put to queue: {data_payload}")
+                await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
             if err:
@@ -134,30 +141,45 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 f"receive tts_flush {data_payload} ",
                 category=LOG_CATEGORY_KEY_POINT,
             )
-            await self._flush_input_items()
-            flush_result = Data.create(DATA_FLUSH_RESULT)
-            json_data = json.dumps(
-                {
-                    "flush_id": t.flush_id,
-                    "metadata": t.metadata,
-                }
-            )
-            flush_result.set_property_from_json(None, json_data)
+            # Use lock to prevent concurrent flush operations
+            try:
+                # Set flushing state to block put operations
+                async with self._put_lock:
+                    self._flush_complete_event.clear()
+                
+                await self._flush_input_items()
 
-            ten_env.log_info(
-                f"send tts_flush_end {json_data}",
-                category=LOG_CATEGORY_KEY_POINT,
-            )
-            await ten_env.send_data(flush_result)
-            ten_env.log_debug("on_data sent flush result")
+                flush_result = Data.create(DATA_FLUSH_RESULT)
+                json_data = json.dumps(
+                    {
+                        "flush_id": t.flush_id,
+                        "metadata": t.metadata,
+                    }
+                )
+                flush_result.set_property_from_json(None, json_data)
+
+                ten_env.log_info(
+                    f"send tts_flush_end {json_data}",
+                    category=LOG_CATEGORY_KEY_POINT,
+                )
+                await ten_env.send_data(flush_result)
+                
+                # Complete flush process - allow get operations to resume
+                self._flush_complete_event.set()
+                ten_env.log_debug("on_data sent flush result")
+            except Exception as e:
+                # Ensure events are set even if flush fails
+                self._flush_complete_event.set()
+                ten_env.log_error(f"Flush operation failed: {e}")
+                raise
 
     async def _flush_input_items(self):
         """Flushes the self.queue and cancels the current task."""
         # Flush the queue using the new flush method
         await self.input_queue.flush()
-
         # Cancel the current task if one is running
         await self._cancel_current_task()
+        await self.cancel_tts()
 
     async def _cancel_current_task(self) -> None:
         """Called when the TTS request is cancelled."""
@@ -470,3 +492,11 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         if metadata:
             new_metadata.update(metadata)
         return new_metadata
+
+    async def cancel_tts(self) -> None:
+        """
+        Called when a flush request is received. Override this method to implement TTS-specific cancellation logic.
+        This method is called after flushing the input queue and cancelling the current task.
+        cancel_tts() implementations should be fast to avoid blocking the main thread for too long.
+        """
+        pass

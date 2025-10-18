@@ -144,7 +144,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             # Use lock to prevent concurrent flush operations
             try:
                 # Set flushing state to block put operations
-                self._flush_complete_event.clear()
+                async with self._put_lock:
+                    self._flush_complete_event.clear()
                 
                 await self._flush_input_items()
 

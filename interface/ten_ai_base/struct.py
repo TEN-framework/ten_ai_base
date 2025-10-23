@@ -57,6 +57,14 @@ class ASRResult(BaseModel):
     metadata: dict[str, Any] = {}  # additional metadata for the transcription
 
 
+class TTS2HttpResponseEventType(Enum):
+    """Event types for TTS2 HTTP responses."""
+    RESPONSE = 1  # Audio data chunk received
+    END = 2  # Stream ended normally
+    ERROR = 3  # General error occurred
+    INVALID_KEY_ERROR = 4  # API key authentication failed
+    FLUSH = 5  # Flush/cancel event
+
 
 """
 ===========LLM Input and Output Models================

@@ -42,7 +42,7 @@ class AsyncTTS2HttpConfig(BaseModel):
     def validate(self) -> None:
         raise NotImplementedError("validate is not implemented")
 
-class AsyncTTS2HttpClient(BaseModel):
+class AsyncTTS2HttpClient:
     @abstractmethod
     async def clean(self) -> None:
         raise NotImplementedError("clean is not implemented")
@@ -52,7 +52,7 @@ class AsyncTTS2HttpClient(BaseModel):
         raise NotImplementedError("cancel is not implemented")
 
     @abstractmethod
-    def get(self, text: str) -> AsyncIterator[Tuple[bytes, TTS2HttpResponseEventType]]:
+    def get(self, text: str, request_id: str) -> AsyncIterator[Tuple[bytes, TTS2HttpResponseEventType]]:
         raise NotImplementedError("get is not implemented")
 
     @abstractmethod
@@ -253,7 +253,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                 f"send_text_to_tts_server:  {t.text} of request_id: {t.request_id}",
                 category=LOG_CATEGORY_VENDOR,
             )
-            data = self.client.get(t.text)
+            data = self.client.get(t.text, t.request_id)
 
             chunk_count = 0
 

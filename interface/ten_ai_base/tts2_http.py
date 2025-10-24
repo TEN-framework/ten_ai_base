@@ -52,7 +52,7 @@ class AsyncTTS2HttpClient:
         raise NotImplementedError("cancel is not implemented")
 
     @abstractmethod
-    async def get(self, text: str, request_id: str) -> AsyncIterator[Tuple[bytes, TTS2HttpResponseEventType]]:
+    async def get(self, text: str, request_id: str) -> AsyncIterator[Tuple[bytes | None, TTS2HttpResponseEventType]]:
         raise NotImplementedError("get is not implemented")
 
     @abstractmethod

@@ -121,7 +121,10 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         if self.client:
-            await self.client.clean()
+            try:
+                await self.client.clean()
+            except Exception as e:
+                ten_env.log_warn(f"Error cleaning client: {traceback.format_exc()}")
             self.client = None
 
         # Clean up all PCMWriters

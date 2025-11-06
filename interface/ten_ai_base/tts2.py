@@ -5,6 +5,7 @@
 #
 from abc import ABC, abstractmethod
 import asyncio
+from enum import Enum
 import json
 import traceback
 import uuid
@@ -36,6 +37,20 @@ DATA_FLUSH = "tts_flush"
 DATA_FLUSH_RESULT = "tts_flush_end"
 
 
+class RequestState(Enum):
+    """
+    Request lifecycle states:
+    - QUEUED: Request received and queued, waiting for processing
+    - PROCESSING: Actively processing text chunks (before text_input_end)
+    - FINALIZING: All text received (text_input_end=True), generating final audio
+    - COMPLETED: Terminal state - request finished (check TTSAudioEndReason for completion reason)
+    """
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    FINALIZING = "finalizing"
+    COMPLETED = "completed"
+
+
 class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     """
     Base class for implementing a Text-to-Speech Extension.
@@ -58,6 +73,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self._flush_complete_event = asyncio.Event()  # allow get after flush is complete
         self._flush_complete_event.set()  # Initially allow gets
         self._put_lock = asyncio.Lock()  # Protect put operations from race conditions
+
+        # State machine for request lifecycle management
+        self.request_states: dict[str, RequestState] = {}
+        self._processing_request_id: str | None = None  # Internal: tracks which request is being processed by queue
+        self.request_finished_event = asyncio.Event()
+
         # metrics every 5 seconds
         self.output_characters = 0
         self.input_characters = 0
@@ -68,6 +89,53 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.total_input_characters = 0
         self.total_recv_audio_duration = 0
         self.total_recv_audio_chunks_len = 0
+
+    def _can_transition_to(self, request_id: str, new_state: RequestState) -> bool:
+        """Check if state transition is valid."""
+        current_state = self.request_states.get(request_id)
+        if current_state is None:
+            # No current state, can transition to QUEUED
+            return new_state == RequestState.QUEUED
+
+        # Define valid state transitions
+        valid_transitions = {
+            RequestState.QUEUED: [RequestState.PROCESSING, RequestState.COMPLETED],
+            RequestState.PROCESSING: [RequestState.FINALIZING, RequestState.COMPLETED],
+            RequestState.FINALIZING: [RequestState.COMPLETED],
+            RequestState.COMPLETED: [],  # Terminal state, no transitions allowed
+        }
+
+        return new_state in valid_transitions.get(current_state, [])
+
+    def _transition_state(self, request_id: str, new_state: RequestState, reason: str = "") -> bool:
+        """
+        Transition request to a new state with validation and logging.
+        Returns True if transition succeeded, False otherwise.
+        """
+        current_state = self.request_states.get(request_id)
+
+        if not self._can_transition_to(request_id, new_state):
+            self.ten_env.log_warn(
+                f"Invalid state transition for request {request_id}: "
+                f"{current_state.value if current_state else 'None'} -> {new_state.value}"
+            )
+            return False
+
+        self.request_states[request_id] = new_state
+        log_msg = f"Request {request_id} state: {current_state.value if current_state else 'None'} -> {new_state.value}"
+        if reason:
+            log_msg += f" (reason: {reason})"
+        self.ten_env.log_info(log_msg, category=LOG_CATEGORY_KEY_POINT)
+        return True
+
+    async def _cleanup_request_state(self, request_id: str, delay: float = 1.0):
+        """
+        Clean up request state after a delay.
+        The delay allows other modules to query the final state before cleanup.
+        """
+        await asyncio.sleep(delay)
+        self.request_states.pop(request_id, None)
+        self.ten_env.log_debug(f"Cleaned up state for request {request_id}")
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         await super().on_init(ten_env)
@@ -114,12 +182,16 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
                 return
             self.ten_env.log_info(
-                f"on_data tts_text_input:  {data_payload}",
+                f"on_data tts_text_input:  {json.dumps(json.loads(data_payload), ensure_ascii=False)}",
                 category=LOG_CATEGORY_KEY_POINT,
             )
-            # Update request_id and store metadata when a new request arrives
-            if not t.request_id in self.metadatas:
-                self.metadatas[t.request_id] = t.metadata
+
+            # Record QUEUED state immediately when request first arrives
+            if t.request_id not in self.request_states:
+                self._transition_state(t.request_id, RequestState.QUEUED, "request received")
+                if t.metadata:
+                    self.metadatas[t.request_id] = t.metadata
+
             # Start an asynchronous task for handling tts
             # Wait for queue to be flushed before allowing new items to be queued
             # Use lock to prevent race condition between wait and put
@@ -146,7 +218,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 # Set flushing state to block put operations
                 async with self._put_lock:
                     self._flush_complete_event.clear()
-                
+
                 await self._flush_input_items()
 
                 flush_result = Data.create(DATA_FLUSH_RESULT)
@@ -163,7 +235,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     category=LOG_CATEGORY_KEY_POINT,
                 )
                 await ten_env.send_data(flush_result)
-                
+
                 # Complete flush process - allow get operations to resume
                 self._flush_complete_event.set()
                 ten_env.log_debug("on_data sent flush result")
@@ -174,12 +246,25 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 raise
 
     async def _flush_input_items(self):
-        """Flushes the self.queue and cancels the current task."""
-        # Flush the queue using the new flush method
+        """Flushes the queue and cancels the current task."""
+        # Flush the queue and get all flushed items
         await self.input_queue.flush()
+
         # Cancel the current task if one is running
-        await self._cancel_current_task()
-        await self.cancel_tts()
+        if self._processing_request_id:
+            current_id = self._processing_request_id
+            current_state = self.request_states.get(current_id)
+
+            if current_state and current_state != RequestState.COMPLETED:
+                self.ten_env.log_info(
+                    f"Cancelling current request {current_id} in state {current_state.value}",
+                    category=LOG_CATEGORY_KEY_POINT,
+                )
+
+                await self._cancel_current_task()
+
+                # Call cancel_tts() - subclass should send audio_end and call finish_request
+                await self.cancel_tts()
 
     async def _cancel_current_task(self) -> None:
         """Called when the TTS request is cancelled."""
@@ -196,8 +281,24 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             if t is None:
                 break
 
+            if (
+                self._processing_request_id is not None
+                and t.request_id != self._processing_request_id
+            ):
+                await self.request_finished_event.wait()
+
+            if self._processing_request_id != t.request_id:
+                self._processing_request_id = t.request_id
+                self.request_finished_event.clear()
+                self._transition_state(t.request_id, RequestState.PROCESSING, "start processing")
+
             try:
                 await self.request_tts(t)
+                if t.text_input_end:
+                    self._transition_state(
+                        t.request_id, RequestState.FINALIZING,
+                        "received text_input_end, generating final audio"
+                    )
             except asyncio.CancelledError:
                 ten_env.log_info(f"Task cancelled: {t.text}")
             except Exception as err:
@@ -316,7 +417,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         await self.ten_env.send_data(data)
-        self.metadatas.pop(request_id, None)
+        # self.metadatas.pop(request_id, None)
 
     async def send_tts_error(
         self,
@@ -441,6 +542,62 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         )
         await self.send_metrics(metrics, request_id)
         self.ten_env.log_debug(f"metrics_connect_delay: {metrics}")
+
+    async def finish_request(
+        self,
+        request_id: str,
+        reason: TTSAudioEndReason = TTSAudioEndReason.REQUEST_END,
+        error: ModuleError | None = None,
+    ) -> None:
+        """
+        Finish a TTS request with proper state transition and cleanup.
+
+        This method handles:
+        1. Send error message (if error provided)
+        2. Transition to COMPLETED state
+        3. Schedule cleanup
+        4. Signal request finished event
+
+        NOTE: This method does NOT send audio_end event. Subclasses should:
+        1. Send audio_end event themselves (via send_tts_audio_end)
+        2. Then call finish_request() to complete state transition
+
+        Usage examples:
+        - Normal completion:
+            await self.send_tts_audio_end(id, interval_ms, duration_ms, reason=REQUEST_END)
+            await self.finish_request(id, reason=REQUEST_END)
+        - Error completion:
+            await self.finish_request(id, reason=ERROR, error=ModuleError(...))
+        - Cancelled:
+            await self.finish_request(id, reason=CANCELLED)
+
+        Args:
+            request_id: The request ID to finish
+            reason: Why the request is ending (default: REQUEST_END)
+            error: Optional error to report before finishing
+            turn_id: Optional turn ID from metadata
+        """
+        # Send error message if provided
+        if error:
+            await self.send_tts_error(request_id, error)
+            self.ten_env.log_info(
+                f"Finishing request {request_id} with error: {error.message}",
+                category=LOG_CATEGORY_KEY_POINT,
+            )
+
+        # Transition to COMPLETED state
+        reason_str = f"request finished with reason={reason.value}"
+        self._transition_state(request_id, RequestState.COMPLETED, reason_str)
+
+        # Schedule cleanup after a short delay (allows other modules to query final state)
+        asyncio.create_task(self._cleanup_request_state(request_id, delay=1.0))
+
+        # Clean up metadata
+        self.metadatas.pop(request_id, None)
+
+        # Signal that current request is finished
+        if self._processing_request_id == request_id:
+            self.request_finished_event.set()
 
     @abstractmethod
     def vendor(self) -> str:

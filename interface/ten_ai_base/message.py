@@ -91,3 +91,4 @@ class MetricsMessage(BaseModel):
 class TTSAudioEndReason(IntEnum):
     REQUEST_END = 1
     INTERRUPTED = 2
+    ERROR = 3

@@ -565,17 +565,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         Usage examples:
         - Normal completion:
             await self.send_tts_audio_end(id, interval_ms, duration_ms, reason=REQUEST_END)
-            await self.finish_request(id, reason=REQUEST_END)
+            await self.finish_request(id, reason=TTSAudioEndReason.REQUEST_END)
         - Error completion:
-            await self.finish_request(id, reason=ERROR, error=ModuleError(...))
-        - Cancelled:
-            await self.finish_request(id, reason=CANCELLED)
+            await self.finish_request(id, reason=TTSAudioEndReason.ERROR, error=ModuleError(...))
 
         Args:
             request_id: The request ID to finish
-            reason: Why the request is ending (default: REQUEST_END)
+            reason: Why the request is ending (default: TTSAudioEndReason.REQUEST_END)
             error: Optional error to report before finishing
-            turn_id: Optional turn ID from metadata
         """
         # Send error message if provided
         if error:

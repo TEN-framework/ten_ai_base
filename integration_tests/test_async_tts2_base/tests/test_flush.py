@@ -121,6 +121,7 @@ class ExtensionTesterFlushWithContinuousInput(AsyncExtensionTester):
             None, json.dumps({
                 "request_id": request_id,
                 "text": f"Test text for {request_id}",
+                "text_input_end": True,
                 "metadata": {}
             })
         )
@@ -198,6 +199,7 @@ class ExtensionTesterMultipleFlush(AsyncExtensionTester):
             None, json.dumps({
                 "request_id": request_id,
                 "text": f"Test text for {request_id}",
+                "text_input_end": True,
                 "metadata": {}
             })
         )

@@ -128,15 +128,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.ten_env.log_info(log_msg, category=LOG_CATEGORY_KEY_POINT)
         return True
 
-    async def _cleanup_request_state(self, request_id: str, delay: float = 1.0):
-        """
-        Clean up request state after a delay.
-        The delay allows other modules to query the final state before cleanup.
-        """
-        await asyncio.sleep(delay)
-        self.request_states.pop(request_id, None)
-        self.ten_env.log_debug(f"Cleaned up state for request {request_id}")
-
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         await super().on_init(ten_env)
         self.ten_env = ten_env
@@ -569,7 +560,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         This method handles:
         1. Send error message (if error provided)
         2. Transition to COMPLETED state
-        3. Schedule cleanup
+        3. Clean up request state and metadata immediately
         4. Signal request finished event
 
         NOTE: This method does NOT send audio_end event. Subclasses should:
@@ -582,6 +573,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             await self.finish_request(id, reason=TTSAudioEndReason.REQUEST_END)
         - Error completion:
             await self.finish_request(id, reason=TTSAudioEndReason.ERROR, error=ModuleError(...))
+        - Interrupted:
+            await self.send_tts_audio_end(id, interval_ms, duration_ms, reason=INTERRUPTED)
+            await self.finish_request(id, reason=TTSAudioEndReason.INTERRUPTED)
 
         Args:
             request_id: The request ID to finish
@@ -600,11 +594,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         reason_str = f"request finished with reason={reason.value}"
         self._transition_state(request_id, RequestState.COMPLETED, reason_str)
 
-        # Schedule cleanup after a short delay (allows other modules to query final state)
-        asyncio.create_task(self._cleanup_request_state(request_id, delay=1.0))
-
-        # Clean up metadata
+        # Clean up request state immediately
+        self.request_states.pop(request_id, None)
         self.metadatas.pop(request_id, None)
+        self.ten_env.log_debug(f"Cleaned up state for request {request_id}")
 
         # Signal that current request is finished
         if self._processing_request_id == request_id:

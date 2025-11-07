@@ -250,7 +250,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # Flush the queue and get all flushed items
         await self.input_queue.flush()
 
-        # Cancel the current task if one is running
+        # Cancel the current task if one is running (must do this before clearing states)
         if self._processing_request_id:
             current_id = self._processing_request_id
             current_state = self.request_states.get(current_id)
@@ -265,6 +265,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
                 # Call cancel_tts() - subclass should send audio_end and call finish_request
                 await self.cancel_tts()
+
+        # Clear all request states (queued requests will be skipped in _process_input_queue)
+        self.request_states.clear()
+
+        # Set event to unblock any waiting requests (they will check state and skip if not found)
+        self.request_finished_event.set()
 
     async def _cancel_current_task(self) -> None:
         """Called when the TTS request is cancelled."""
@@ -286,6 +292,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 and t.request_id != self._processing_request_id
             ):
                 await self.request_finished_event.wait()
+
+                # Check if this request was flushed while waiting
+                if t.request_id not in self.request_states:
+                    ten_env.log_info(
+                        f"Request {t.request_id} was flushed, skipping",
+                        category=LOG_CATEGORY_KEY_POINT,
+                    )
+                    continue
 
             if self._processing_request_id != t.request_id:
                 self._processing_request_id = t.request_id

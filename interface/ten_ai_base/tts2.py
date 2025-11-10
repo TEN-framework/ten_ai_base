@@ -128,6 +128,28 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.ten_env.log_info(log_msg, category=LOG_CATEGORY_KEY_POINT)
         return True
 
+    def _cleanup_completed_states(self) -> None:
+        """
+        Clean up old COMPLETED states to prevent unbounded memory growth.
+        
+        This is called when a new request arrives to ensure we don't accumulate
+        COMPLETED states indefinitely. Flush operation will also clear all states.
+        """
+        completed_ids = [
+            req_id for req_id, state in self.request_states.items()
+            if state == RequestState.COMPLETED
+        ]
+        
+        if completed_ids:
+            for req_id in completed_ids:
+                self.request_states.pop(req_id, None)
+                # Metadata should already be cleaned up, but defensive cleanup
+                self.metadatas.pop(req_id, None)
+            
+            self.ten_env.log_debug(
+                f"Cleaned up {len(completed_ids)} COMPLETED states: {completed_ids}"
+            )
+
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         await super().on_init(ten_env)
         self.ten_env = ten_env
@@ -179,6 +201,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
             # Record QUEUED state immediately when request first arrives
             if t.request_id not in self.request_states:
+                # Clean up old COMPLETED states to prevent unbounded growth
+                self._cleanup_completed_states()
+                
                 self._transition_state(t.request_id, RequestState.QUEUED, "request received")
                 if t.metadata:
                     self.metadatas[t.request_id] = t.metadata
@@ -238,10 +263,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def _flush_input_items(self):
         """Flushes the queue and cancels the current task."""
-        # Flush the queue and get all flushed items
+        # Flush the queue
         await self.input_queue.flush()
 
-        # Cancel the current task if one is running (must do this before clearing states)
+        # Cancel the current task if one is running
         if self._processing_request_id:
             current_id = self._processing_request_id
             current_state = self.request_states.get(current_id)
@@ -254,13 +279,17 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
                 await self._cancel_current_task()
 
-                # Call cancel_tts() - subclass should send audio_end and call finish_request
+                # Call cancel_tts() - subclass should send audio_end with reason=INTERRUPTED
+                # Note: Subclass should NOT call finish_request(), state cleanup is handled below
                 await self.cancel_tts()
 
-        # Clear all request states (queued requests will be skipped in _process_input_queue)
+        # Clear all request states and metadata
+        # This handles both the current request and any queued requests
         self.request_states.clear()
+        self.metadatas.clear()
+        self.ten_env.log_debug("Cleared all request states and metadata after flush")
 
-        # Set event to unblock any waiting requests (they will check state and skip if not found)
+        # Set event to unblock any waiting requests
         self.request_finished_event.set()
 
     async def _cancel_current_task(self) -> None:
@@ -422,7 +451,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         await self.ten_env.send_data(data)
-        # self.metadatas.pop(request_id, None)
+        
+        # Clean up metadata when audio_end is sent
+        self.metadatas.pop(request_id, None)
 
     async def send_tts_error(
         self,
@@ -594,10 +625,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         reason_str = f"request finished with reason={reason.value}"
         self._transition_state(request_id, RequestState.COMPLETED, reason_str)
 
-        # Clean up request state immediately
-        self.request_states.pop(request_id, None)
+        # Keep the COMPLETED state for observability
+        # State will be cleaned up by:
+        # 1. _flush_input_items() when flush is called
+        # 2. Or when starting a new request (to prevent unbounded growth)
+        
+        # Metadata is already cleaned up in send_tts_audio_end()
+        # This is a defensive cleanup in case audio_end wasn't sent
         self.metadatas.pop(request_id, None)
-        self.ten_env.log_debug(f"Cleaned up state for request {request_id}")
 
         # Signal that current request is finished
         if self._processing_request_id == request_id:
@@ -657,7 +692,13 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def cancel_tts(self) -> None:
         """
         Called when a flush request is received. Override this method to implement TTS-specific cancellation logic.
+        
+        Subclass responsibilities:
+        1. Cancel any ongoing vendor API operations
+        2. Send audio_end with reason=INTERRUPTED (if there's an active request)
+        3. Do NOT call finish_request() - state cleanup is handled by the base class
+        
         This method is called after flushing the input queue and cancelling the current task.
-        cancel_tts() implementations should be fast to avoid blocking the main thread for too long.
+        Implementations should be fast to avoid blocking.
         """
         pass

@@ -146,6 +146,13 @@ class LLMRequestAbort(BaseModel):
     """
     request_id: str
 
+class LLMRequestRetrievePrompt(BaseModel):
+    """
+    Model for LLM retrieve prompt request.
+    This model is used to define the structure of the request to retrieve the prompt for an ongoing LLM operation.
+    """
+    request_id: str
+
 class EventType(str, Enum):
     MESSAGE_CONTENT_DELTA = "message_content_delta"
     MESSAGE_CONTENT_DONE = "message_content_done"
@@ -211,6 +218,12 @@ class LLMResponseToolCall(LLMResponse):
     type: EventType = EventType.TOOL_CALL_CONTENT
     arguments: Optional[dict[str, Any]] = None
 
+class LLMResponseRetrievePrompt(BaseModel):
+    """
+    Model for a prompt in LLM output.
+    This model is used to define the structure of the prompt returned by the LLM.
+    """
+    prompt: str
 
 
 def parse_llm_response(unparsed_string: str) -> LLMResponse:

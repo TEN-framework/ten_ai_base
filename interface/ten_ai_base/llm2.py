@@ -216,7 +216,7 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
     async def on_retrieve_prompt(
         self, async_ten_env: AsyncTenEnv, request: LLMRequestRetrievePrompt
     ) -> LLMResponseRetrievePrompt:
-        """Called when a prompt is updated."""
+        """Called when a prompt retrieval is requested."""
         raise NotImplementedError(
             "on_retrieve_prompt must be implemented in the subclass"
         )

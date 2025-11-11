@@ -8,9 +8,6 @@
                     "request_id": {
                         "type": "string"
                     },
-                    "model": {
-                        "type": "string"
-                    },
                     "messages": {
                         "type": "array",
                         "items": {

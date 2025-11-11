@@ -138,6 +138,7 @@ class LLMRequest(BaseModel):
     streaming: Optional[bool] = True
     tools: Optional[list[LLMToolMetadata]] = None
     parameters: Optional[dict[str, Any]] = None
+    prompt: Optional[str] = None
 
 class LLMRequestAbort(BaseModel):
     """

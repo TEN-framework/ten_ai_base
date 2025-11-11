@@ -9,7 +9,7 @@ import json
 import traceback
 from typing import AsyncGenerator, Dict, Optional
 
-from .struct import LLMRequest, LLMRequestAbort, LLMResponse
+from .struct import LLMRequest, LLMRequestAbort, LLMRequestRetrievePrompt, LLMResponse, LLMResponseRetrievePrompt
 from ten_runtime import (
     AsyncExtension,
 )
@@ -97,18 +97,30 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
                     raise RuntimeError(f"Failed to get payload: {err}")
 
                 abort = LLMRequestAbort.model_validate_json(payload)
-                req_id: Optional[str] = getattr(abort, "request_id", None)
+                rid = abort.request_id
 
-                if req_id:
-                    cancelled = await self._cancel_one(req_id)
+                if rid:
+                    cancelled = await self._cancel_one(rid)
                     async_ten_env.log_info(
-                        f"[LLM2Base] abort: request_id={req_id}, cancelled={cancelled}"
+                        f"[LLM2Base] abort: request_id={rid}, cancelled={cancelled}"
                     )
                 else:
                     await self._cancel_all()
                     async_ten_env.log_info("[LLM2Base] abort: all requests cancelled")
 
                 await async_ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
+
+            elif cmd_name == "retrieve_prompt":
+                payload, err = cmd.get_property_to_json(None)
+                if err:
+                    raise RuntimeError(f"Failed to get payload: {err}")
+
+                retrieve = LLMRequestRetrievePrompt.model_validate_json(payload)
+
+                response = await self.on_retrieve_prompt(async_ten_env, retrieve)
+                cmd_result = CmdResult.create(StatusCode.OK, cmd)
+                cmd_result.set_property_from_json(None, response.model_dump_json())
+                await async_ten_env.return_result(cmd_result)
 
             else:
                 await async_ten_env.return_result(CmdResult.create(StatusCode.OK, cmd))
@@ -199,6 +211,15 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
             for ctx in list(self._inflight.values()):
                 if not ctx.task.done():
                     ctx.task.cancel()
+
+    @abstractmethod
+    async def on_retrieve_prompt(
+        self, async_ten_env: AsyncTenEnv, request: LLMRequestRetrievePrompt
+    ) -> LLMResponseRetrievePrompt:
+        """Called when a prompt is updated."""
+        raise NotImplementedError(
+            "on_retrieve_prompt must be implemented in the subclass"
+        )
 
     @abstractmethod
     def on_call_chat_completion(

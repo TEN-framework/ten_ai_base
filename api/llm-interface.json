@@ -73,6 +73,25 @@
                     }
                 }
             }
+        },
+        {
+            "name": "retrieve_prompt",
+            "property": {
+                "properties": {
+                    "request_id": {
+                        "type": "string"
+                    }
+                }
+            },
+            "result": {
+                "property": {
+                    "properties": {
+                        "prompt": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     ],
     "data_out": [

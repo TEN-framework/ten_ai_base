@@ -195,7 +195,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
                 return
             self.ten_env.log_info(
-                f"on_data tts_text_input:  {json.dumps(json.loads(data_payload), ensure_ascii=False)}",
+                f"on_data tts_text_input:  {data_payload}",
                 category=LOG_CATEGORY_KEY_POINT,
             )
 

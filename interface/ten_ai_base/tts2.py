@@ -76,8 +76,16 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
         # State machine for request lifecycle management
         self.request_states: dict[str, RequestState] = {}
-        self._processing_request_id: str | None = None  # Internal: tracks which request is being processed by queue
+        # Tracks which request is currently being processed by the queue
+        # None means no active request, allowing new requests to start
+        # Reset to None when request completes (in finish_request) or flush occurs
+        self._processing_request_id: str | None = None
         self.request_finished_event = asyncio.Event()
+
+        # Buffer for messages from different request_ids (to handle interleaved requests)
+        # Key: request_id, Value: list of buffered messages for that request
+        # Messages are buffered when they arrive while a different request is being processed
+        self._pending_messages: dict[str, list[TTSTextInput]] = {}
 
         # metrics every 5 seconds
         self.output_characters = 0
@@ -131,7 +139,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     def _cleanup_completed_states(self) -> None:
         """
         Clean up old COMPLETED states to prevent unbounded memory growth.
-        
+
         This is called when a new request arrives to ensure we don't accumulate
         COMPLETED states indefinitely. Flush operation will also clear all states.
         """
@@ -139,13 +147,13 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             req_id for req_id, state in self.request_states.items()
             if state == RequestState.COMPLETED
         ]
-        
+
         if completed_ids:
             for req_id in completed_ids:
                 self.request_states.pop(req_id, None)
                 # Metadata should already be cleaned up, but defensive cleanup
                 self.metadatas.pop(req_id, None)
-            
+
             self.ten_env.log_debug(
                 f"Cleaned up {len(completed_ids)} COMPLETED states: {completed_ids}"
             )
@@ -203,7 +211,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             if t.request_id not in self.request_states:
                 # Clean up old COMPLETED states to prevent unbounded growth
                 self._cleanup_completed_states()
-                
+
                 self._transition_state(t.request_id, RequestState.QUEUED, "request received")
                 if t.metadata:
                     self.metadatas[t.request_id] = t.metadata
@@ -287,7 +295,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # This handles both the current request and any queued requests
         self.request_states.clear()
         self.metadatas.clear()
-        self.ten_env.log_debug("Cleared all request states and metadata after flush")
+
+        # Clear buffered messages from different request_ids
+        self._pending_messages.clear()
+
+        # Reset processing request ID
+        self._processing_request_id = None
+
+        self.ten_env.log_debug("Cleared all request states, metadata, and pending messages after flush")
 
         # Set event to unblock any waiting requests
         self.request_finished_event.set()
@@ -300,27 +315,39 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.leftover_bytes = b""
 
     async def _process_input_queue(self, ten_env: AsyncTenEnv) -> None:
-        """Asynchronously process queue items one by one."""
+        """
+        Asynchronously process queue items one by one.
+
+        Handles out-of-order messages by buffering messages from different request_ids.
+        Example: If messages arrive as [req3, req3, req4, req4, req3(end)],
+        req4 messages will be buffered until req3 completes.
+        """
         while True:
             # Wait for an item to be available in the queue
             t: TTSTextInput = await self.input_queue.get()
             if t is None:
                 break
 
+            # If we're currently processing a different request, buffer this message
             if (
                 self._processing_request_id is not None
                 and t.request_id != self._processing_request_id
             ):
-                await self.request_finished_event.wait()
+                # Buffer the message for later processing
+                if t.request_id not in self._pending_messages:
+                    self._pending_messages[t.request_id] = []
+                self._pending_messages[t.request_id].append(t)
 
-                # Check if this request was flushed while waiting
-                if t.request_id not in self.request_states:
-                    ten_env.log_info(
-                        f"Request {t.request_id} was flushed, skipping",
-                        category=LOG_CATEGORY_KEY_POINT,
-                    )
-                    continue
+                ten_env.log_debug(
+                    f"Buffered message for request {t.request_id} (currently processing {self._processing_request_id}), "
+                    f"buffer size: {len(self._pending_messages[t.request_id])}"
+                )
+                continue
 
+            # Start processing a new request or continue processing current request
+            # This handles two cases:
+            # 1. _processing_request_id is None (no active request) - start new request
+            # 2. _processing_request_id == t.request_id (continue current request) - no state change needed
             if self._processing_request_id != t.request_id:
                 self._processing_request_id = t.request_id
                 self.request_finished_event.clear()
@@ -333,6 +360,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                         t.request_id, RequestState.FINALIZING,
                         "received text_input_end, generating final audio"
                     )
+
             except asyncio.CancelledError:
                 ten_env.log_info(f"Task cancelled: {t.text}")
             except Exception as err:
@@ -451,7 +479,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         await self.ten_env.send_data(data)
-        
+
         # Clean up metadata when audio_end is sent
         self.metadatas.pop(request_id, None)
 
@@ -591,8 +619,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         This method handles:
         1. Send error message (if error provided)
         2. Transition to COMPLETED state
-        3. Clean up request state and metadata immediately
-        4. Signal request finished event
+        3. Clean up request metadata
+        4. Reset _processing_request_id to allow next request
+        5. Signal request finished event
+        6. Release buffered messages from other requests (for interleaved requests)
 
         NOTE: This method does NOT send audio_end event. Subclasses should:
         1. Send audio_end event themselves (via send_tts_audio_end)
@@ -628,15 +658,39 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # Keep the COMPLETED state for observability
         # State will be cleaned up by:
         # 1. _flush_input_items() when flush is called
-        # 2. Or when starting a new request (to prevent unbounded growth)
-        
+        # 2. _cleanup_completed_states() when starting a new request (to prevent unbounded growth)
+
         # Metadata is already cleaned up in send_tts_audio_end()
         # This is a defensive cleanup in case audio_end wasn't sent
         self.metadatas.pop(request_id, None)
 
-        # Signal that current request is finished
+        # Handle request completion and buffered messages release
+        # Only process if this is the currently processing request
         if self._processing_request_id == request_id:
+            # IMPORTANT: Reset _processing_request_id BEFORE releasing buffered messages
+            # This ensures that when buffered messages are put back to queue and immediately
+            # processed by _process_input_queue, they won't be buffered again
+            self._processing_request_id = None
             self.request_finished_event.set()
+
+            # Release buffered messages from other requests (for interleaved requests)
+            # Only release one request at a time to maintain order
+            if self._pending_messages:
+                # Find the next request_id with buffered messages
+                next_request_ids = list(self._pending_messages.keys())
+                if next_request_ids:
+                    next_request_id = next_request_ids[0]
+                    buffered_messages = self._pending_messages.pop(next_request_id)
+
+                    self.ten_env.log_info(
+                        f"Request {request_id} finished, releasing buffered request {next_request_id} "
+                        f"with {len(buffered_messages)} messages",
+                        category=LOG_CATEGORY_KEY_POINT,
+                    )
+
+                    # Put buffered messages back to queue (in order)
+                    for msg in buffered_messages:
+                        await self.input_queue.put(msg)
 
     @abstractmethod
     def vendor(self) -> str:
@@ -692,12 +746,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def cancel_tts(self) -> None:
         """
         Called when a flush request is received. Override this method to implement TTS-specific cancellation logic.
-        
+
         Subclass responsibilities:
         1. Cancel any ongoing vendor API operations
         2. Send audio_end with reason=INTERRUPTED (if there's an active request)
         3. Do NOT call finish_request() - state cleanup is handled by the base class
-        
+
         This method is called after flushing the input queue and cancelling the current task.
         Implementations should be fast to avoid blocking.
         """

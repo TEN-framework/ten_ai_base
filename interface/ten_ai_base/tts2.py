@@ -689,8 +689,11 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     )
 
                     # Put buffered messages back to queue (in order)
-                    for msg in buffered_messages:
-                        await self.input_queue.put(msg)
+                    # Use _put_lock to prevent race condition with on_data
+                    # This ensures all buffered messages are enqueued atomically
+                    async with self._put_lock:
+                        for msg in buffered_messages:
+                            await self.input_queue.put(msg)
 
     @abstractmethod
     def vendor(self) -> str:

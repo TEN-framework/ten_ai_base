@@ -80,7 +80,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # None means no active request, allowing new requests to start
         # Reset to None when request completes (in finish_request) or flush occurs
         self._processing_request_id: str | None = None
-        self.request_finished_event = asyncio.Event()
 
         # Buffer for messages from different request_ids (to handle interleaved requests)
         # Key: request_id, Value: list of buffered messages for that request
@@ -272,7 +271,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def _flush_input_items(self):
         """Flushes the queue and cancels the current task."""
         # Flush the queue
-        await self.input_queue.flush()
+        self.input_queue.flush()
+
+        # Clear buffered messages from different request_ids
+        self._pending_messages.clear()
 
         # Cancel the current task if one is running
         if self._processing_request_id:
@@ -296,16 +298,11 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.request_states.clear()
         self.metadatas.clear()
 
-        # Clear buffered messages from different request_ids
-        self._pending_messages.clear()
-
         # Reset processing request ID
         self._processing_request_id = None
 
         self.ten_env.log_debug("Cleared all request states, metadata, and pending messages after flush")
 
-        # Set event to unblock any waiting requests
-        self.request_finished_event.set()
 
     async def _cancel_current_task(self) -> None:
         """Called when the TTS request is cancelled."""
@@ -360,7 +357,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             # 2. _processing_request_id == t.request_id (continue current request) - no state change needed
             if self._processing_request_id != t.request_id:
                 self._processing_request_id = t.request_id
-                self.request_finished_event.clear()
                 self._transition_state(t.request_id, RequestState.PROCESSING, "start processing")
 
             try:
@@ -681,7 +677,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             # This ensures that when buffered messages are put back to queue and immediately
             # processed by _process_input_queue, they won't be buffered again
             self._processing_request_id = None
-            self.request_finished_event.set()
 
             # Release buffered messages from other requests (for interleaved requests)
             # Only release one request at a time to maintain order

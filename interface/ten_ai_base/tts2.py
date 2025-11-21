@@ -274,7 +274,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         await self.input_queue.flush()
 
         # Clear buffered messages from different request_ids
-        await self._pending_messages.clear()
+        self._pending_messages.clear()
 
         # Cancel the current task if one is running
         if self._processing_request_id:

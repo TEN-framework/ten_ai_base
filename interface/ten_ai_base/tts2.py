@@ -271,10 +271,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def _flush_input_items(self):
         """Flushes the queue and cancels the current task."""
         # Flush the queue
-        self.input_queue.flush()
+        await self.input_queue.flush()
 
         # Clear buffered messages from different request_ids
-        self._pending_messages.clear()
+        await self._pending_messages.clear()
 
         # Cancel the current task if one is running
         if self._processing_request_id:

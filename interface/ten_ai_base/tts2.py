@@ -704,6 +704,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                         category=LOG_CATEGORY_KEY_POINT,
                     )
 
+                    # IMPORTANT: Set _processing_request_id BEFORE putting messages back to queue
+                    # This prevents race condition where _process_input_queue processes messages
+                    # before _processing_request_id is set, which could cause incorrect buffering
+                    self._processing_request_id = next_request_id
+                    self.ten_env.log_debug(
+                        f"Set _processing_request_id to {next_request_id} before releasing messages"
+                    )
+
                     # Put buffered messages back to queue (in order)
                     # Use _put_lock to prevent race condition with on_data
                     # This ensures all buffered messages are enqueued atomically
@@ -714,15 +722,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                                 f"Put buffered message back to queue: request_id={msg.request_id}, "
                                 f"text={msg.text[:50]}..."
                             )
-                    
-                    # IMPORTANT: Set _processing_request_id to the released request_id
-                    # This ensures that when _process_input_queue processes messages from the queue,
-                    # messages from other request_ids will be buffered, and messages from the
-                    # released request_id will be processed immediately
-                    self._processing_request_id = next_request_id
-                    self.ten_env.log_debug(
-                        f"Set _processing_request_id to {next_request_id} to ensure its messages are processed first"
-                    )
 
     @abstractmethod
     def vendor(self) -> str:

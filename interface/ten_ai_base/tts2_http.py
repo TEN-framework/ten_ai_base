@@ -21,7 +21,7 @@ from .message import (
     TTSAudioEndReason,
 )
 from .struct import TTS2HttpResponseEventType, TTSTextInput
-from .tts2 import AsyncTTS2BaseExtension
+from .tts2 import AsyncTTS2BaseExtension, RequestState
 from .const import LOG_CATEGORY_VENDOR, LOG_CATEGORY_KEY_POINT
 from ten_runtime import AsyncTenEnv
 
@@ -128,9 +128,20 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
             self.client = None
 
         # Clean up all PCMWriters
-        for request_id, recorder in self.recorder_map.items():
+        # Create a copy of items to avoid issues if recorder_map is modified during iteration
+        recorder_items = list(self.recorder_map.items())
+        for request_id, recorder in recorder_items:
+            # Double-check that the recorder still exists (may have been cleaned up by _send_audio_end_and_finish)
+            if request_id not in self.recorder_map:
+                ten_env.log_debug(
+                    f"PCMWriter for request_id {request_id} was already cleaned up, skipping"
+                )
+                continue
             try:
                 await recorder.flush()
+                # Remove from map after successful flush
+                if request_id in self.recorder_map:
+                    del self.recorder_map[request_id]
                 ten_env.log_debug(
                     f"Flushed PCMWriter for request_id: {request_id}"
                 )
@@ -138,6 +149,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                 ten_env.log_error(
                     f"Error flushing PCMWriter for request_id {request_id}: {e}"
                 )
+                # Still try to remove it even if flush failed
+                if request_id in self.recorder_map:
+                    del self.recorder_map[request_id]
 
         await super().on_stop(ten_env)
         ten_env.log_debug("on_stop")
@@ -155,15 +169,8 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
             if self.client:
                 await self.client.cancel()
                 if self.request_ts:
-                    request_event_interval = int(
-                        (datetime.now() - self.request_ts).total_seconds()
-                        * 1000
-                    )
-                    duration_ms = self._calculate_audio_duration_ms()
-                    await self.send_tts_audio_end(
+                    await self._send_audio_end_and_finish(
                         request_id=self.current_request_id,
-                        request_event_interval_ms=request_event_interval,
-                        request_total_audio_duration_ms=duration_ms,
                         reason=TTSAudioEndReason.INTERRUPTED,
                     )
         else:
@@ -275,9 +282,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                         if self.first_chunk:
                             self.request_ts = datetime.now()
                             if self.sent_ts:
-                                asyncio.create_task(self.send_tts_audio_start(
+                                await self.send_tts_audio_start(
                                     request_id=self.current_request_id,
-                                ))
+                                )
                                 ttfb = int(
                                     (
                                         datetime.now() - self.sent_ts
@@ -285,11 +292,11 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                                     * 1000
                                 )
                                 extra_metadata = self.client.get_extra_metadata()
-                                asyncio.create_task(self.send_tts_ttfb_metrics(
+                                await self.send_tts_ttfb_metrics(
                                     request_id=self.current_request_id,
                                     ttfb_ms=ttfb,
                                     extra_metadata=extra_metadata,
-                                ))
+                                )
                                 self.ten_env.log_debug(
                                     f"Sent TTS audio start and TTFB metrics: {ttfb}ms"
                                 )
@@ -318,20 +325,10 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                             "Received empty payload for TTS response"
                         )
                         if self.request_ts and t.text_input_end:
-                            duration_ms = self._calculate_audio_duration_ms()
-                            request_event_interval = int(
-                                (
-                                    datetime.now() - self.request_ts
-                                ).total_seconds()
-                                * 1000
-                            )
-                            asyncio.create_task(self.send_tts_audio_end(
+                            await self._send_audio_end_and_finish(
                                 request_id=self.current_request_id,
-                                request_event_interval_ms=request_event_interval,
-                                request_total_audio_duration_ms=duration_ms,
-                            ))
-                            self.ten_env.log_debug(
-                                f"Sent TTS audio end event, interval: {request_event_interval}ms, duration: {duration_ms}ms"
+                                reason=TTSAudioEndReason.REQUEST_END,
+                                log_message=f"Sent TTS audio end event, interval: {self._calculate_request_event_interval_ms()}ms, duration: {self._calculate_audio_duration_ms()}ms",
                             )
 
                 elif event_status == TTS2HttpResponseEventType.END:
@@ -340,18 +337,10 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                     )
                     # Send TTS audio end event
                     if self.request_ts and t.text_input_end:
-                        request_event_interval = int(
-                            (datetime.now() - self.request_ts).total_seconds()
-                            * 1000
-                        )
-                        duration_ms = self._calculate_audio_duration_ms()
-                        asyncio.create_task(self.send_tts_audio_end(
+                        await self._send_audio_end_and_finish(
                             request_id=self.current_request_id,
-                            request_event_interval_ms=request_event_interval,
-                            request_total_audio_duration_ms=duration_ms,
-                        ))
-                        self.ten_env.log_debug(
-                            f"Sent TTS audio end event, interval: {request_event_interval}ms, duration: {duration_ms}ms"
+                            reason=TTSAudioEndReason.REQUEST_END,
+                            log_message=f"Sent TTS audio end event, interval: {self._calculate_request_event_interval_ms()}ms, duration: {self._calculate_audio_duration_ms()}ms",
                         )
                     break
 
@@ -361,8 +350,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                         if audio_chunk
                         else "Unknown API key error"
                     )
-                    asyncio.create_task(self.send_tts_error(
-                        request_id=self.current_request_id or t.request_id,
+                    request_id = self.current_request_id or t.request_id
+                    await self._handle_error_with_text_input_end(
+                        request_id=request_id,
                         error=ModuleError(
                             message=error_msg,
                             module=ModuleType.TTS,
@@ -371,7 +361,8 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                                 vendor=self.vendor()
                             ),
                         ),
-                    ))
+                        text_input_end=t.text_input_end,
+                    )
                     return
 
                 elif event_status == TTS2HttpResponseEventType.ERROR:
@@ -380,24 +371,55 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                         if audio_chunk
                         else "Unknown client error"
                     )
-                    raise RuntimeError(error_msg)
+                    request_id = self.current_request_id or t.request_id
+                    await self._handle_error_with_text_input_end(
+                        request_id=request_id,
+                        error=ModuleError(
+                            message=error_msg,
+                            module=ModuleType.TTS,
+                            code=ModuleErrorCode.NON_FATAL_ERROR,
+                            vendor_info=ModuleErrorVendorInfo(
+                                vendor=self.vendor()
+                            ),
+                        ),
+                        text_input_end=t.text_input_end,
+                    )
+                    return
 
             self.ten_env.log_debug(
                 f"TTS processing completed, total chunks: {chunk_count}"
             )
+            
+            # Handle case where loop ended normally but we didn't receive END event
+            # This can happen if the stream ends without an explicit END event
+            if self.request_ts and t.text_input_end and self.current_request_id:
+                # Check if we haven't already sent audio_end (state should be FINALIZING)
+                if self.current_request_id in self.request_states:
+                    current_state = self.request_states[self.current_request_id]
+                    if current_state == RequestState.FINALIZING:
+                        self.ten_env.log_info(
+                            f"Stream ended without END event for request {self.current_request_id}, sending audio_end",
+                            category=LOG_CATEGORY_KEY_POINT,
+                        )
+                        await self._send_audio_end_and_finish(
+                            request_id=self.current_request_id,
+                            reason=TTSAudioEndReason.REQUEST_END,
+                        )
 
         except Exception as e:
             self.ten_env.log_error(
                 f"Error in request_tts: {traceback.format_exc()}"
             )
-            await self.send_tts_error(
-                request_id=self.current_request_id or t.request_id,
+            request_id = self.current_request_id or t.request_id
+            await self._handle_error_with_text_input_end(
+                request_id=request_id,
                 error=ModuleError(
                     message=str(e),
                     module=ModuleType.TTS,
                     code=ModuleErrorCode.NON_FATAL_ERROR,
                     vendor_info=ModuleErrorVendorInfo(vendor=self.vendor()),
                 ),
+                text_input_end=t.text_input_end,
             )
 
     def _calculate_audio_duration_ms(self) -> int:
@@ -409,3 +431,83 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
             self.synthesize_audio_sample_rate() * bytes_per_sample * channels
         )
         return int(duration_sec * 1000)
+
+    def _calculate_request_event_interval_ms(self) -> int:
+        """Calculate request event interval in milliseconds."""
+        if self.request_ts:
+            return int(
+                (datetime.now() - self.request_ts).total_seconds() * 1000
+            )
+        return 0
+
+    async def _send_audio_end_and_finish(
+        self,
+        request_id: str,
+        reason: TTSAudioEndReason,
+        log_message: str | None = None,
+    ) -> None:
+        """
+        Send tts_audio_end event and finish the request.
+        
+        Args:
+            request_id: The request ID
+            reason: The reason for ending the audio
+            log_message: Optional log message to display
+        """
+        request_event_interval = self._calculate_request_event_interval_ms()
+        duration_ms = self._calculate_audio_duration_ms()
+        
+        if log_message:
+            self.ten_env.log_debug(log_message)
+        
+        await self.send_tts_audio_end(
+            request_id=request_id,
+            request_event_interval_ms=request_event_interval,
+            request_total_audio_duration_ms=duration_ms,
+            reason=reason,
+        )
+        
+        # Close and clean up the recorder for this request_id
+        if request_id in self.recorder_map:
+            try:
+                await self.recorder_map[request_id].flush()
+                del self.recorder_map[request_id]
+                self.ten_env.log_debug(
+                    f"Closed and cleaned up PCMWriter for request_id: {request_id}"
+                )
+            except Exception as e:
+                self.ten_env.log_error(
+                    f"Error closing PCMWriter for request_id {request_id}: {e}"
+                )
+        
+        await self.finish_request(
+            request_id=request_id,
+            reason=reason,
+        )
+
+    async def _handle_error_with_text_input_end(
+        self,
+        request_id: str,
+        error: ModuleError,
+        text_input_end: bool,
+    ) -> None:
+        """
+        Handle error and send tts_audio_end if text_input_end was received.
+        
+        Args:
+            request_id: The request ID
+            error: The error to send
+            text_input_end: Whether text_input_end was received
+        """
+        await self.send_tts_error(request_id=request_id, error=error)
+        
+        if text_input_end:
+            self.ten_env.log_info(
+                f"Error occurred after text_input_end for request {request_id}, "
+                f"sending tts_audio_end with ERROR reason",
+                category=LOG_CATEGORY_KEY_POINT,
+            )
+            await self._send_audio_end_and_finish(
+                request_id=request_id,
+                reason=TTSAudioEndReason.ERROR,
+            )

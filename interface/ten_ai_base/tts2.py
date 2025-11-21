@@ -343,6 +343,16 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     f"buffer size: {len(self._pending_messages[t.request_id])}"
                 )
                 continue
+            elif (
+                self._processing_request_id is None
+                and t.request_id not in self._pending_messages
+            ):
+                # Message arrived when no request is processing and this request has no buffered messages
+                # This is normal - the message will be processed immediately
+                ten_env.log_debug(
+                    f"Processing message for request {t.request_id} immediately "
+                    f"(no active request, no buffered messages for this request)"
+                )
 
             # Start processing a new request or continue processing current request
             # This handles two cases:
@@ -354,12 +364,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 self._transition_state(t.request_id, RequestState.PROCESSING, "start processing")
 
             try:
-                await self.request_tts(t)
                 if t.text_input_end:
                     self._transition_state(
                         t.request_id, RequestState.FINALIZING,
                         "received text_input_end, generating final audio"
                     )
+                await self.request_tts(t)
 
             except asyncio.CancelledError:
                 ten_env.log_info(f"Task cancelled: {t.text}")
@@ -678,13 +688,19 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             if self._pending_messages:
                 # Find the next request_id with buffered messages
                 next_request_ids = list(self._pending_messages.keys())
+                self.ten_env.log_info(
+                    f"Request {request_id} finished, _pending_messages keys (in order): {next_request_ids}, "
+                    f"will release first: {next_request_ids[0] if next_request_ids else 'None'}",
+                    category=LOG_CATEGORY_KEY_POINT,
+                )
                 if next_request_ids:
                     next_request_id = next_request_ids[0]
                     buffered_messages = self._pending_messages.pop(next_request_id)
 
                     self.ten_env.log_info(
                         f"Request {request_id} finished, releasing buffered request {next_request_id} "
-                        f"with {len(buffered_messages)} messages",
+                        f"with {len(buffered_messages)} messages. "
+                        f"Remaining pending messages keys: {list(self._pending_messages.keys())}",
                         category=LOG_CATEGORY_KEY_POINT,
                     )
 
@@ -694,6 +710,19 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     async with self._put_lock:
                         for msg in buffered_messages:
                             await self.input_queue.put(msg)
+                            self.ten_env.log_debug(
+                                f"Put buffered message back to queue: request_id={msg.request_id}, "
+                                f"text={msg.text[:50]}..."
+                            )
+                    
+                    # IMPORTANT: Set _processing_request_id to the released request_id
+                    # This ensures that when _process_input_queue processes messages from the queue,
+                    # messages from other request_ids will be buffered, and messages from the
+                    # released request_id will be processed immediately
+                    self._processing_request_id = next_request_id
+                    self.ten_env.log_debug(
+                        f"Set _processing_request_id to {next_request_id} to ensure its messages are processed first"
+                    )
 
     @abstractmethod
     def vendor(self) -> str:

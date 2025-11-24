@@ -4,7 +4,7 @@
 # See the LICENSE file for more information.
 #
 import asyncio
-from typing import Optional, Protocol
+from typing import Optional, Protocol, Union
 
 
 class Logger(Protocol):
@@ -23,6 +23,25 @@ class AudioBufferManager:
     Close behavior:
     - After `close()`, a waiting `pull_chunk` will return the remaining bytes if
       they are less than the threshold; if no bytes remain, it returns b"" (EOF).
+
+    Example:
+        ```python
+        # Create manager with 1280 byte threshold
+        manager = AudioBufferManager(threshold=1280, logger=some_logger)
+
+        # Producer: push audio data
+        await manager.push_audio(audio_data)
+
+        # Consumer: pull chunks
+        while True:
+            chunk = await manager.pull_chunk()
+            if not chunk:  # EOF
+                break
+            process_audio(chunk)
+
+        # Close when done
+        await manager.close()
+        ```
     """
 
     def __init__(
@@ -52,7 +71,7 @@ class AudioBufferManager:
             )
 
     # -------------------- Producer API --------------------
-    async def push_audio(self, data: bytes | bytearray) -> None:
+    async def push_audio(self, data: Union[bytes, bytearray]) -> None:
         """
         Append audio bytes into the buffer asynchronously.
 
@@ -77,8 +96,7 @@ class AudioBufferManager:
                 )
 
             self._buffer.extend(data)
-            if not self._closed:
-                self._cond.notify()  # Use notify() for single consumer
+            self._cond.notify()  # notify() is safe even if closed
 
     # -------------------- Consumer API --------------------
     async def pull_chunk(self) -> bytes:

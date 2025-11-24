@@ -24,6 +24,10 @@ class AudioBufferManager:
     - After `close()`, a waiting `pull_chunk` will return the remaining bytes if
       they are less than the threshold; if no bytes remain, it returns b"" (EOF).
 
+    Note:
+    - This implementation assumes a **single consumer**. For multiple consumers,
+      additional synchronization would be required.
+
     Example:
         ```python
         # Create manager with 1280 byte threshold
@@ -130,6 +134,20 @@ class AudioBufferManager:
             return chunk
 
     # -------------------- Utility API --------------------
+
+    def get_buffer_info(self) -> dict:
+        """
+        Get current buffer information for debugging and monitoring.
+
+        Returns:
+            Dict containing buffer_size, threshold, max_buffer_size, and is_closed
+        """
+        return {
+            "buffer_size": len(self._buffer),
+            "threshold": self._threshold,
+            "max_buffer_size": self._max_buffer_size,
+            "is_closed": self._closed,
+        }
 
     async def close(self) -> None:
         """Mark as closed and wake up any waiting consumers."""

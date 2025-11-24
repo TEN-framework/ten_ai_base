@@ -1,7 +1,9 @@
+#
+# This file is part of TEN Framework, an open source project.
+# Licensed under the Apache License, Version 2.0.
+# See the LICENSE file for more information.
+#
 import asyncio
-from typing import Optional
-
-from ten_runtime import AsyncTenEnv
 
 
 class AudioBufferManager:
@@ -15,22 +17,20 @@ class AudioBufferManager:
       they are less than the threshold; if no bytes remain, it returns b"" (EOF).
     """
 
-    def __init__(
-        self, ten_env: Optional[AsyncTenEnv] = None, threshold: int = 1280
-    ):
+    def __init__(self, threshold: int = 1280, logger=None):
         if not isinstance(threshold, int) or threshold <= 0:
             raise ValueError("threshold must be a positive integer")
 
         self._buffer = bytearray()
         self._threshold = threshold
-        self._ten_env = ten_env
+        self.logger = logger
 
         # Concurrency control
         self._cond = asyncio.Condition()
         self._closed = False
 
-        if self._ten_env:
-            self._ten_env.log_debug(
+        if self.logger:
+            self.logger.log_debug(
                 f"AudioBufferManager initialized. threshold={self._threshold}"
             )
 
@@ -61,13 +61,13 @@ class AudioBufferManager:
                 if self._buffer:
                     remaining = bytes(self._buffer)
                     self._buffer.clear()
-                    if self._ten_env:
-                        self._ten_env.log_debug(
+                    if self.logger:
+                        self.logger.log_debug(
                             f"pull_chunk: return tail {len(remaining)} bytes on close"
                         )
                     return remaining
-                if self._ten_env:
-                    self._ten_env.log_debug("pull_chunk: EOF (empty on close)")
+                if self.logger:
+                    self.logger.log_debug("pull_chunk: EOF (empty on close)")
                 return b""
 
             if len(self._buffer) >= self._threshold:
@@ -86,8 +86,8 @@ class AudioBufferManager:
         async def _close():
             async with self._cond:
                 self._closed = True
-                if self._ten_env:
-                    self._ten_env.log_debug("AudioBufferManager closed")
+                if self.logger:
+                    self.logger.log_debug("AudioBufferManager closed")
                 self._cond.notify_all()
 
         # If inside an event loop, schedule it; otherwise run a new loop to avoid blocking

@@ -4,8 +4,16 @@
 # See the LICENSE file for more information.
 #
 import asyncio
-from typing import Callable, Awaitable, Optional
+from typing import Callable, Awaitable, Optional, Protocol
 from .message import ModuleError, ModuleErrorCode, ModuleType
+
+
+class Logger(Protocol):
+    """Logger protocol for type hints."""
+
+    def log_debug(self, msg: str) -> None: ...
+    def log_warn(self, msg: str) -> None: ...
+    def log_error(self, msg: str) -> None: ...
 
 
 class ReconnectManager:
@@ -23,15 +31,16 @@ class ReconnectManager:
         self,
         max_attempts: int = 5,
         base_delay: float = 0.3,  # 300 milliseconds
-        logger=None,
+        module_type: ModuleType = ModuleType.ASR,
+        logger: Optional[Logger] = None,
     ):
         self.max_attempts = max_attempts
         self.base_delay = base_delay
+        self.module_type = module_type
         self.logger = logger
 
         # State tracking
         self.attempts = 0
-        self._connection_successful = False
 
     def reset_counter(self):
         """Reset reconnection counter"""
@@ -41,7 +50,6 @@ class ReconnectManager:
 
     def mark_connection_successful(self):
         """Mark connection as successful and reset counter"""
-        self._connection_successful = True
         self.reset_counter()
 
     def can_retry(self) -> bool:
@@ -56,7 +64,7 @@ class ReconnectManager:
             "can_retry": self.can_retry(),
         }
 
-    async def handle_reconnect(
+    async def attempt_reconnect(
         self,
         connection_func: Callable[[], Awaitable[None]],
         error_handler: Optional[Callable[[ModuleError], Awaitable[None]]] = None,
@@ -80,14 +88,13 @@ class ReconnectManager:
             if error_handler:
                 await error_handler(
                     ModuleError(
-                        module=ModuleType.ASR,
-                        code=ModuleErrorCode.FATAL_ERROR.value,
+                        module=self.module_type,
+                        code=int(ModuleErrorCode.FATAL_ERROR.value),
                         message=f"Failed to reconnect after {self.max_attempts} attempts",
                     )
                 )
             return False
 
-        self._connection_successful = False
         self.attempts += 1
 
         # Calculate exponential backoff delay: 2^(attempts-1) * base_delay
@@ -122,8 +129,8 @@ class ReconnectManager:
                 if error_handler:
                     await error_handler(
                         ModuleError(
-                            module=ModuleType.ASR,
-                            code=ModuleErrorCode.FATAL_ERROR.value,
+                            module=self.module_type,
+                            code=int(ModuleErrorCode.FATAL_ERROR.value),
                             message=f"All reconnection attempts failed. Last error: {str(e)}",
                         )
                     )

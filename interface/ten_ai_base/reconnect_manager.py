@@ -118,14 +118,6 @@ class ReconnectManager:
                     f"Maximum reconnection attempts ({self.max_attempts}) "
                     f"reached. No more attempts allowed."
                 )
-            if error_handler:
-                await error_handler(
-                    ModuleError(
-                        module=self.module_type,
-                        code=int(ModuleErrorCode.FATAL_ERROR.value),
-                        message=f"Failed to reconnect after {self.max_attempts} attempts",
-                    )
-                )
             return False
 
         self.attempts += 1

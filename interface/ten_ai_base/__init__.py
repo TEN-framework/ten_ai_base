@@ -34,6 +34,8 @@ from .transcription import (
 )
 from .message import ModuleType, ErrorMessage, MetricsMessage
 from .dumper import Dumper
+from .reconnect_manager import ReconnectManager
+from .audio_buffer_manager import AudioBufferManager
 
 # Specify what should be imported when a user imports * from the
 # ten_ai_base package.
@@ -68,4 +70,6 @@ __all__ = [
     "ErrorMessage",
     "MetricsMessage",
     "Dumper",
+    "ReconnectManager",
+    "AudioBufferManager",
 ]

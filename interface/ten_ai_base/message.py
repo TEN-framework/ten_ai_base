@@ -24,6 +24,7 @@ class ModuleMetricKey(str, Enum):
     ASR_TTLW = "ttlw"   # time to last word
     ASR_CONNECT_DELAY = "connect_delay"   # time cost to connect to asr server
     ASR_ACTUAL_SEND = "actual_send"   # audio duration sent to asr server
+    ASR_ACTUAL_SEND_DELTA = "actual_send_delta"  # audio duration sent since last report
     ASR_VENDOR_METRICS = "vendor_metrics"   # vendor specific metrics
     TTS_TTFB = "ttfb"   # time to first byte
     LLM_TTFT = "ttft"   # time to first token

@@ -55,6 +55,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.audio_timeline = AudioTimeline(self._handle_error_in_audio_timeline)
         self.audio_actual_send_metrics_task: asyncio.Task[None] | None = None
         self.uuid = self._get_uuid()  # Unique identifier for the current final turn
+        self.last_reported_audio_duration = 0  # Track audio duration at last report
 
         # States for TTFW calculation
         self.first_audio_time: float | None = (
@@ -344,10 +345,17 @@ class AsyncASRBaseExtension(AsyncExtension):
             + self.audio_timeline.total_silence_audio_duration
         )
 
+        # Calculate the audio duration since last report
+        duration_since_last_report = actual_send - self.last_reported_audio_duration
+        self.last_reported_audio_duration = actual_send
+
         metrics = ModuleMetrics(
             module=ModuleType.ASR,
             vendor=self.vendor(),
-            metrics={ModuleMetricKey.ASR_ACTUAL_SEND: actual_send},
+            metrics={
+                ModuleMetricKey.ASR_ACTUAL_SEND: actual_send,
+                ModuleMetricKey.ASR_ACTUAL_SEND_DELTA: duration_since_last_report,
+            },
         )
         await self._send_asr_metrics(metrics)
 

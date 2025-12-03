@@ -238,7 +238,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                     if t.request_id not in self.recorder_map:
                         dump_file_path = os.path.join(
                             self.config.dump_path,
-                            f"rime_dump_{t.request_id}.pcm",
+                            f"{self.vendor()}_dump_{t.request_id}.pcm",
                         )
                         self.recorder_map[t.request_id] = PCMWriter(
                             dump_file_path
@@ -258,7 +258,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                 )
                 self.current_request_finished = True
 
-            # Get audio stream from Rime TTS
+            # Get audio stream from TTS
             self.ten_env.log_debug(
                 f"send_text_to_tts_server:  {t.text} of request_id: {t.request_id}",
                 category=LOG_CATEGORY_VENDOR,
@@ -333,7 +333,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
 
                 elif event_status == TTS2HttpResponseEventType.END:
                     self.ten_env.log_debug(
-                        "Received TTS_END event from Rime TTS"
+                        "Received TTS_END event from TTS"
                     )
                     # Send TTS audio end event
                     if self.request_ts and t.text_input_end:

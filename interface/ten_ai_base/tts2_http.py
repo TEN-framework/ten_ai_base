@@ -498,14 +498,16 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
             text_input_end: Whether text_input_end was received
         """
         await self.send_tts_error(request_id=request_id, error=error)
-        
+
         if text_input_end:
-            self.ten_env.log_info(
-                f"Error occurred after text_input_end for request {request_id}, "
-                f"sending tts_audio_end with ERROR reason",
-                category=LOG_CATEGORY_KEY_POINT,
-            )
+            # Send audio_end and finish
             await self._send_audio_end_and_finish(
+                request_id=request_id,
+                reason=TTSAudioEndReason.ERROR,
+            )
+        else:
+            # Just finish the request without audio_end
+            await self.finish_request(
                 request_id=request_id,
                 reason=TTSAudioEndReason.ERROR,
             )

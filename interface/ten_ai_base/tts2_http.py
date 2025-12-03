@@ -312,11 +312,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                             self.ten_env.log_debug(
                                 f"Writing audio chunk to dump file, dump url: {self.config.dump_path}"
                             )
-                            asyncio.create_task(
-                                self.recorder_map[
-                                    self.current_request_id
-                                ].write(audio_chunk)
-                            )
+                            await self.recorder_map[
+                                self.current_request_id
+                            ].write(audio_chunk)
 
                         # Send audio data
                         await self.send_tts_audio_data(audio_chunk)

@@ -45,6 +45,9 @@ class TestAsyncTTS2Extension(AsyncTTS2BaseExtension):
         This method is called when the TTS request is made.
         It should yield audio data bytes.
         """
+        # Send audio_start to set current_audio_request_id (required for metadata)
+        await self.send_tts_audio_start(request_id=t.request_id)
+
         audio_data_bytes = [3, 100, 7]
         for b in audio_data_bytes:
             await self.send_tts_audio_data(bytearray(b))

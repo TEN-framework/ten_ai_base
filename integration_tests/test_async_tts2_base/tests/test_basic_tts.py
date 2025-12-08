@@ -29,6 +29,10 @@ class ExtensionTesterBasicTextToSpeech(AsyncExtensionTester):
         self.target_sample_rate = sample_rate
         self.received_frames = 0
         self.received_text_result:TTSTextResult = None
+        self.expected_metadata = {
+            "session_id": "test_session",
+            "turn_id": 1
+        }
 
     async def on_start(self, ten_env: AsyncTenEnvTester) -> None:
         await asyncio.sleep(0.1)
@@ -75,6 +79,18 @@ class ExtensionTesterBasicTextToSpeech(AsyncExtensionTester):
             == audio_frame.get_samples_per_channel() * 2
         )
 
+        # Verify metadata is attached to audio frame
+        metadata_json, err = audio_frame.get_property_to_json("metadata")
+        assert not err, f"Failed to get metadata from audio frame: {err}"
+
+        metadata = json.loads(metadata_json)
+        ten_env.log_info(f"Audio frame metadata: {metadata}")
+
+        # Verify metadata matches what was sent in the request
+        assert metadata == self.expected_metadata, (
+            f"Metadata mismatch! Expected: {self.expected_metadata}, "
+            f"Got: {metadata}"
+        )
 
         self.received_frames += 1
 
@@ -85,7 +101,7 @@ class ExtensionTesterBasicTextToSpeech(AsyncExtensionTester):
             f"Number of Channels: {audio_frame.get_number_of_channels()}"
             f"Received Frames: {self.received_frames}"
         )
-        
+
         self.check_received(ten_env)
 
     def check_received(self, ten_env: AsyncTenEnvTester):

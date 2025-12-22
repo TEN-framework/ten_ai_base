@@ -1,6 +1,15 @@
 {
     "property": {
         "properties": {
+            "url": {
+                "type": "string"
+            },
+            "headers": {
+                "type": "object"
+            },
+            "params": {
+                "type": "object"
+            },
             "dump": {
                 "type": "bool"
             },
@@ -204,6 +213,87 @@
                 "vendor",
                 "metrics"
             ]
+        },
+        {
+            "name": "connected",
+            "property": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "module": {
+                        "type": "string"
+                    },
+                    "vendor": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "disconnected",
+            "property": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "module": {
+                        "type": "string"
+                    },
+                    "vendor": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ],
+    "cmd_in": [
+        {
+            "name": "update_configs",
+            "property": {
+                "properties": {
+                    "url": {
+                        "type": "string"
+                    },
+                    "headers": {
+                        "type": "object"
+                    },
+                    "params": {
+                        "type": "object"
+                    },
+                    "dump": {
+                        "type": "bool"
+                    }
+                }
+            },
+            "result": {
+                "property": {
+                    "properties": {
+                        "code": {
+                            "type": "int64"
+                        },
+                        "message": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     ]
 }

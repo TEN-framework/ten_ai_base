@@ -308,54 +308,6 @@
                 "vendor",
                 "metrics"
             ]
-        },
-        {
-            "name": "connected",
-            "property": {
-                "properties": {
-                    "id": {
-                        "type": "string"
-                    },
-                    "module": {
-                        "type": "string"
-                    },
-                    "vendor": {
-                        "type": "string"
-                    },
-                    "metadata": {
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "name": "disconnected",
-            "property": {
-                "properties": {
-                    "id": {
-                        "type": "string"
-                    },
-                    "module": {
-                        "type": "string"
-                    },
-                    "vendor": {
-                        "type": "string"
-                    },
-                    "metadata": {
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
         }
     ],
     "cmd_in": [

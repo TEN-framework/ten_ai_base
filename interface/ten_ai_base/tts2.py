@@ -211,20 +211,22 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 category=LOG_CATEGORY_KEY_POINT,
             )
 
-            # Record QUEUED state immediately when request first arrives
-            if t.request_id not in self.request_states:
-                # Clean up old COMPLETED states to prevent unbounded growth
-                self._cleanup_completed_states()
-
-                self._transition_state(t.request_id, RequestState.QUEUED, "request received")
-                if t.metadata:
-                    self.metadatas[t.request_id] = t.metadata
-
             # Start an asynchronous task for handling tts
             # Wait for queue to be flushed before allowing new items to be queued
             # Use lock to prevent race condition between wait and put
             async with self._put_lock:
                 await self._flush_complete_event.wait()
+                
+                # Record QUEUED state after flush check to avoid race condition
+                # This ensures metadata is set atomically with queue put operation
+                if t.request_id not in self.request_states:
+                    # Clean up old COMPLETED states to prevent unbounded growth
+                    self._cleanup_completed_states()
+
+                    self._transition_state(t.request_id, RequestState.QUEUED, "request received")
+                    if t.metadata:
+                        self.metadatas[t.request_id] = t.metadata
+                
                 self.ten_env.log_debug(f"on_data tts_text_input put to queue: {data_payload}")
                 await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:

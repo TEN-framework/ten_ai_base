@@ -203,13 +203,13 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
             try:
                 t = TTSTextInput.model_validate_json(data_payload)
+                self.ten_env.log_info(
+                    f"on_data tts_text_input:  {t}",
+                    category=LOG_CATEGORY_KEY_POINT,
+                )
             except Exception as e:
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
                 return
-            self.ten_env.log_info(
-                f"on_data tts_text_input:  {data_payload}",
-                category=LOG_CATEGORY_KEY_POINT,
-            )
 
             # Start an asynchronous task for handling tts
             # Wait for queue to be flushed before allowing new items to be queued
@@ -227,7 +227,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     if t.metadata:
                         self.metadatas[t.request_id] = t.metadata
                 
-                self.ten_env.log_debug(f"on_data tts_text_input put to queue: {data_payload}")
+                self.ten_env.log_debug(f"on_data tts_text_input put to queue")
                 await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")

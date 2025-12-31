@@ -497,10 +497,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         await self.ten_env.send_data(data)
-
-        # Clean up metadata when audio_end is sent
-        self.metadatas.pop(request_id, None)
-
+ 
         # Reset current_audio_request_id (audio phase complete)
         if self.current_audio_request_id == request_id:
             self.current_audio_request_id = None

@@ -682,10 +682,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # 1. _flush_input_items() when flush is called
         # 2. _cleanup_completed_states() when starting a new request (to prevent unbounded growth)
 
-        # Metadata is already cleaned up in send_tts_audio_end()
-        # This is a defensive cleanup in case audio_end wasn't sent
-        self.metadatas.pop(request_id, None)
-
         # Defensive reset of current_audio_request_id for error paths
         if self.current_audio_request_id == request_id:
             self.current_audio_request_id = None

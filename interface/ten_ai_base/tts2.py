@@ -97,6 +97,11 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.total_recv_audio_duration = 0
         self.total_recv_audio_chunks_len = 0
 
+        # Tracks which request_id's audio is currently being sent
+        # Set in send_tts_audio_start(), reset in send_tts_audio_end() and flush
+        # Used by send_tts_audio_data() to attach correct metadata to audio frames
+        self.current_audio_request_id = None
+
     def _can_transition_to(self, request_id: str, new_state: RequestState) -> bool:
         """Check if state transition is valid."""
         current_state = self.request_states.get(request_id)
@@ -198,29 +203,31 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
             try:
                 t = TTSTextInput.model_validate_json(data_payload)
+                self.ten_env.log_info(
+                    f"on_data tts_text_input:  {t}",
+                    category=LOG_CATEGORY_KEY_POINT,
+                )
             except Exception as e:
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
                 return
-            self.ten_env.log_info(
-                f"on_data tts_text_input:  {data_payload}",
-                category=LOG_CATEGORY_KEY_POINT,
-            )
-
-            # Record QUEUED state immediately when request first arrives
-            if t.request_id not in self.request_states:
-                # Clean up old COMPLETED states to prevent unbounded growth
-                self._cleanup_completed_states()
-
-                self._transition_state(t.request_id, RequestState.QUEUED, "request received")
-                if t.metadata:
-                    self.metadatas[t.request_id] = t.metadata
 
             # Start an asynchronous task for handling tts
             # Wait for queue to be flushed before allowing new items to be queued
             # Use lock to prevent race condition between wait and put
             async with self._put_lock:
                 await self._flush_complete_event.wait()
-                self.ten_env.log_debug(f"on_data tts_text_input put to queue: {data_payload}")
+                
+                # Record QUEUED state after flush check to avoid race condition
+                # This ensures metadata is set atomically with queue put operation
+                if t.request_id not in self.request_states:
+                    # Clean up old COMPLETED states to prevent unbounded growth
+                    self._cleanup_completed_states()
+
+                    self._transition_state(t.request_id, RequestState.QUEUED, "request received")
+                    if t.metadata:
+                        self.metadatas[t.request_id] = t.metadata
+                
+                self.ten_env.log_debug(f"on_data tts_text_input put to queue")
                 await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
@@ -298,8 +305,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.request_states.clear()
         self.metadatas.clear()
 
-        # Reset processing request ID
+        # Reset processing request ID and current audio request ID
         self._processing_request_id = None
+        self.current_audio_request_id = None
 
         self.ten_env.log_debug("Cleared all request states, metadata, and pending messages after flush")
 
@@ -405,6 +413,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 )
                 f.alloc_buf(len(combined_data))
                 f.set_timestamp(timestamp)
+                f.set_property_from_json("metadata", json.dumps(self.metadatas.get(self.current_audio_request_id, {})))
                 buff = f.lock_buf()
                 buff[:] = combined_data
                 f.unlock_buf(buff)
@@ -443,6 +452,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def send_tts_audio_start(
         self, request_id: str, turn_id: int = -1, extra_metadata: dict | None = None
     ) -> None:
+        # Set current_audio_request_id to track which request's audio is being sent
+        self.current_audio_request_id = request_id
+
         new_metadata = self.update_metadata(request_id, extra_metadata)
 
         data = Data.create("tts_audio_start")
@@ -485,9 +497,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         await self.ten_env.send_data(data)
-
-        # Clean up metadata when audio_end is sent
-        self.metadatas.pop(request_id, None)
+ 
+        # Reset current_audio_request_id (audio phase complete)
+        if self.current_audio_request_id == request_id:
+            self.current_audio_request_id = None
 
     async def send_tts_error(
         self,
@@ -666,9 +679,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # 1. _flush_input_items() when flush is called
         # 2. _cleanup_completed_states() when starting a new request (to prevent unbounded growth)
 
-        # Metadata is already cleaned up in send_tts_audio_end()
-        # This is a defensive cleanup in case audio_end wasn't sent
-        self.metadatas.pop(request_id, None)
+        # Defensive reset of current_audio_request_id for error paths
+        if self.current_audio_request_id == request_id:
+            self.current_audio_request_id = None
 
         # Handle request completion and buffered messages release
         # Only process if this is the currently processing request

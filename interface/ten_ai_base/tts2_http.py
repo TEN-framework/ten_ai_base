@@ -238,7 +238,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                     if t.request_id not in self.recorder_map:
                         dump_file_path = os.path.join(
                             self.config.dump_path,
-                            f"rime_dump_{t.request_id}.pcm",
+                            f"{self.vendor()}_dump_{t.request_id}.pcm",
                         )
                         self.recorder_map[t.request_id] = PCMWriter(
                             dump_file_path
@@ -258,7 +258,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                 )
                 self.current_request_finished = True
 
-            # Get audio stream from Rime TTS
+            # Get audio stream from TTS
             self.ten_env.log_debug(
                 f"send_text_to_tts_server:  {t.text} of request_id: {t.request_id}",
                 category=LOG_CATEGORY_VENDOR,
@@ -312,11 +312,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                             self.ten_env.log_debug(
                                 f"Writing audio chunk to dump file, dump url: {self.config.dump_path}"
                             )
-                            asyncio.create_task(
-                                self.recorder_map[
-                                    self.current_request_id
-                                ].write(audio_chunk)
-                            )
+                            await self.recorder_map[
+                                self.current_request_id
+                            ].write(audio_chunk)
 
                         # Send audio data
                         await self.send_tts_audio_data(audio_chunk)
@@ -333,7 +331,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
 
                 elif event_status == TTS2HttpResponseEventType.END:
                     self.ten_env.log_debug(
-                        "Received TTS_END event from Rime TTS"
+                        "Received TTS_END event from TTS"
                     )
                     # Send TTS audio end event
                     if self.request_ts and t.text_input_end:
@@ -500,14 +498,16 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
             text_input_end: Whether text_input_end was received
         """
         await self.send_tts_error(request_id=request_id, error=error)
-        
+
         if text_input_end:
-            self.ten_env.log_info(
-                f"Error occurred after text_input_end for request {request_id}, "
-                f"sending tts_audio_end with ERROR reason",
-                category=LOG_CATEGORY_KEY_POINT,
-            )
+            # Send audio_end and finish
             await self._send_audio_end_and_finish(
+                request_id=request_id,
+                reason=TTSAudioEndReason.ERROR,
+            )
+        else:
+            # Just finish the request without audio_end
+            await self.finish_request(
                 request_id=request_id,
                 reason=TTSAudioEndReason.ERROR,
             )

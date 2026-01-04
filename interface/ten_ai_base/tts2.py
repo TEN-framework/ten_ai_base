@@ -203,13 +203,13 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
             try:
                 t = TTSTextInput.model_validate_json(data_payload)
+                self.ten_env.log_info(
+                    f"on_data tts_text_input:  {t}",
+                    category=LOG_CATEGORY_KEY_POINT,
+                )
             except Exception as e:
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
                 return
-            self.ten_env.log_info(
-                f"on_data tts_text_input:  {data_payload}",
-                category=LOG_CATEGORY_KEY_POINT,
-            )
 
             # Start an asynchronous task for handling tts
             # Wait for queue to be flushed before allowing new items to be queued
@@ -227,7 +227,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     if t.metadata:
                         self.metadatas[t.request_id] = t.metadata
                 
-                self.ten_env.log_debug(f"on_data tts_text_input put to queue: {data_payload}")
+                self.ten_env.log_debug(f"on_data tts_text_input put to queue")
                 await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
             data_payload, err = data.get_property_to_json("")
@@ -497,10 +497,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         await self.ten_env.send_data(data)
-
-        # Clean up metadata when audio_end is sent
-        self.metadatas.pop(request_id, None)
-
+ 
         # Reset current_audio_request_id (audio phase complete)
         if self.current_audio_request_id == request_id:
             self.current_audio_request_id = None
@@ -681,10 +678,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # State will be cleaned up by:
         # 1. _flush_input_items() when flush is called
         # 2. _cleanup_completed_states() when starting a new request (to prevent unbounded growth)
-
-        # Metadata is already cleaned up in send_tts_audio_end()
-        # This is a defensive cleanup in case audio_end wasn't sent
-        self.metadatas.pop(request_id, None)
 
         # Defensive reset of current_audio_request_id for error paths
         if self.current_audio_request_id == request_id:

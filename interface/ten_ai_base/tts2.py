@@ -35,6 +35,7 @@ DATA_TTS_TEXT_INPUT = "tts_text_input"
 DATA_TTS_TEXT_RESULT = "tts_text_result"
 DATA_FLUSH = "tts_flush"
 DATA_FLUSH_RESULT = "tts_flush_end"
+CMD_UPDATE_CONFIGS = "update_configs"
 
 
 class RequestState(Enum):
@@ -186,10 +187,29 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
         cmd_name = cmd.get_name()
-        ten_env.log_info(f"on_cmd json: {cmd_name}")
+        ten_env.log_info(f"on_cmd: {cmd_name}")
 
-        cmd_result = CmdResult.create(StatusCode.OK, cmd)
-        await ten_env.return_result(cmd_result)
+        if cmd_name == CMD_UPDATE_CONFIGS:
+            try:
+                content, err = cmd.get_property_to_json("")
+                if err:
+                    raise RuntimeError(f"Failed to get cmd property: {err}")
+
+                configs = json.loads(content)
+                await self.update_configs(configs)
+
+                cmd_result = CmdResult.create(StatusCode.OK, cmd)
+                await ten_env.return_result(cmd_result)
+            except Exception as e:
+                ten_env.log_error(f"update_configs failed: {e}")
+                cmd_result = CmdResult.create(StatusCode.ERROR, cmd)
+                cmd_result.set_property_from_json(
+                    "", json.dumps({"message": str(e)})
+                )
+                await ten_env.return_result(cmd_result)
+        else:
+            cmd_result = CmdResult.create(StatusCode.OK, cmd)
+            await ten_env.return_result(cmd_result)
 
     async def on_data(self, ten_env: AsyncTenEnv, data: Data) -> None:
         # Get the necessary properties
@@ -793,5 +813,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
         This method is called after flushing the input queue and cancelling the current task.
         Implementations should be fast to avoid blocking.
+        """
+        pass
+
+    async def update_configs(self, configs: dict) -> None:
+        """
+        Called when update_configs command is received.
+        Subclasses should override this method to handle config updates.
         """
         pass

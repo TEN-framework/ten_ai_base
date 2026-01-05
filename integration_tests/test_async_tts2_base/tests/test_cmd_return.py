@@ -27,6 +27,23 @@ class ExtensionTesterCmdReturn(AsyncExtensionTester):
         _, ten_err = await ten_env_tester.send_cmd(test_cmd)
         assert not ten_err
 
+        # Test update_configs success
+        update_cmd = Cmd.create("update_configs")
+        update_cmd.set_property_from_json("", json.dumps({"sample_rate": 24000}))
+        result, ten_err = await ten_env_tester.send_cmd(update_cmd)
+        assert not ten_err
+        assert result.get_status_code() == StatusCode.OK
+
+        # Test update_configs error
+        error_cmd = Cmd.create("update_configs")
+        error_cmd.set_property_from_json("", json.dumps({"error": True}))
+        result, ten_err = await ten_env_tester.send_cmd(error_cmd)
+        assert not ten_err
+        assert result.get_status_code() == StatusCode.ERROR
+        
+        content, _ = result.get_property_to_json("")
+        assert "Simulated error" in content
+
         ten_env_tester.stop_test()
 
 

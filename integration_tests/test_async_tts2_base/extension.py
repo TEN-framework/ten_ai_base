@@ -87,3 +87,11 @@ class TestAsyncTTS2Extension(AsyncTTS2BaseExtension):
 
     def synthesize_audio_sample_rate(self):
         return self.config.sample_rate
+
+    async def update_configs(self, configs: dict) -> None:
+        if configs.get("error"):
+            raise RuntimeError("Simulated error")
+
+        if "sample_rate" in configs:
+            self.config.sample_rate = configs["sample_rate"]
+            self.ten_env.log_info(f"Updated sample_rate to {self.config.sample_rate}")

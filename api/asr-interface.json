@@ -103,6 +103,9 @@
                         "properties": {
                             "session_id": {
                                 "type": "string"
+                            },
+                            "asr_additional_output": {
+                                "type": "object"
                             }
                         }
                     }

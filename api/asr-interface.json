@@ -104,7 +104,7 @@
                             "session_id": {
                                 "type": "string"
                             },
-                            "asr_additional_output": {
+                            "asr_info": {
                                 "type": "object"
                             }
                         }

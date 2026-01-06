@@ -9,7 +9,7 @@ from ten_ai_base.timeline import AudioTimeline, AudioTimelineEventType
 
 
 # ============================================================================
-# Dropped Audio 基础功能测试
+# Basic Dropped Audio Functionality Tests
 # ============================================================================
 
 
@@ -70,7 +70,7 @@ def test_dropped_audio_merging():
 
 
 # ============================================================================
-# Dropped Audio + User Audio 组合测试
+# Dropped Audio + User Audio Combination Tests
 # ============================================================================
 
 
@@ -116,7 +116,7 @@ def test_multiple_dropped_segments():
 
     # Provider timeline: [USER:500] [USER:1000] (continuous from provider's view)
     # Real audio timeline: [DROPPED:1000] [USER:500] [DROPPED:2000] [USER:1000]
-    
+
     # Provider time 0 -> after first dropped = 1000
     assert timeline.get_audio_duration_before_time(0) == 1000
     # Provider time 500 -> 1000 (dropped1) + 500 (user1) = 1500
@@ -128,7 +128,7 @@ def test_multiple_dropped_segments():
 
 
 # ============================================================================
-# Dropped Audio + Silence 组合测试
+# Dropped Audio + Silence Combination Tests
 # ============================================================================
 
 
@@ -142,7 +142,7 @@ def test_dropped_with_silence():
 
     # Provider timeline: [USER:1000] [SILENCE:500] [USER:2000]
     # Real audio timeline: [DROPPED:3000] [USER:1000] [USER:2000]
-    
+
     # Provider time 0 -> 3000 (dropped)
     assert timeline.get_audio_duration_before_time(0) == 3000
     # Provider time 1000 -> 3000 + 1000 = 4000
@@ -166,13 +166,13 @@ def test_silence_then_dropped():
 
     # Provider timeline: [SILENCE:500] [USER:2000]
     # Provider time:      0          500         2500
-    
+
     # Real world timeline: [SILENCE:500] [DROPPED:1000] [USER:2000]
     # Real time:           0          500           1500         3500
-    
+
     # Real audio timeline (excluding silence): [DROPPED:1000] [USER:2000]
     # Real audio time:                         0           1000         3000
-    
+
     # Provider time 0 (start of silence) -> real audio time 0 (silence excluded)
     assert timeline.get_audio_duration_before_time(0) == 0
     # Provider time 500 (end of silence) -> real audio time 0 (silence excluded, haven't reached user audio yet)
@@ -181,32 +181,32 @@ def test_silence_then_dropped():
     # But we haven't "sent" anything past the silence yet, so we're at the boundary
     # Real audio position = 0 + 0 (no user audio sent yet)
     # Wait, this is confusing. Let me think differently...
-    
+
     # At provider time 500, provider has received 500ms of silence
     # Real audio time should account for: dropped audio that exists between silence end and next user audio
     # But the dropped audio hasn't been "processed" yet from provider's perspective
-    
+
     # I think the issue is: when do we count dropped audio?
     # Dropped audio should be counted when we pass it in the timeline
     # At provider time 500+, we start the user audio, which comes after dropped
     # So at provider time 500, we're at the boundary, just added the dropped audio offset
-    
+
     # Actually, let me reconsider: provider time 500 means we're 500ms into what provider received
     # At this point, provider received silence
     # Real audio at this point = 0 (no user audio) + 0 (silence doesn't count)
     # The dropped audio comes AFTER this point in real world
     # So it shouldn't be counted yet
-    
+
     # Let me test what actually happens:
     # At provider time 500: we've passed 500ms silence, haven't entered user audio yet
     # Real audio time = 0 (no real audio counted yet)
     assert timeline.get_audio_duration_before_time(500) == 0
-    
+
     # At provider time 501: we're 1ms into user audio (from provider's view)
     # In real world, this 1ms user audio comes after dropped audio
     # Real audio time = 1000 (dropped) + 1 (user audio) = 1001
     assert timeline.get_audio_duration_before_time(501) == 1001
-    
+
     # Provider time 1000 -> 500ms into user audio -> 1000 (dropped) + 500 (user) = 1500
     assert timeline.get_audio_duration_before_time(1000) == 1500
     # Provider time 2500 -> all user audio -> 1000 (dropped) + 2000 (user) = 3000
@@ -214,7 +214,7 @@ def test_silence_then_dropped():
 
 
 # ============================================================================
-# 复杂场景测试
+# Complex Scenario Tests
 # ============================================================================
 
 
@@ -231,10 +231,10 @@ def test_complex_interleaved_all_types():
 
     # Provider timeline: [USER:1000] [SILENCE:200] [USER:800] [SILENCE:100]
     # Provider time:      0         1000        1200       2000        2100
-    
+
     # Real audio timeline: [DROPPED:500] [USER:1000] [DROPPED:300] [USER:800]
     # Real audio time:      0          500        1500          1800       2600
-    
+
     # Provider time 0 -> real audio 500 (first dropped)
     assert timeline.get_audio_duration_before_time(0) == 500
     # Provider time 1000 (end of first user) -> 500 + 1000 = 1500
@@ -260,13 +260,13 @@ def test_alternating_dropped_and_silence():
 
     # Provider timeline: [SILENCE:500] [USER:1000]
     # Provider time:      0          500        1500
-    
+
     # Real world timeline: [DROPPED:1000] [SILENCE:500] [DROPPED:2000] [USER:1000]
     # Real time:           0           1000          1500          3500         4500
-    
+
     # Real audio timeline: [DROPPED:1000] [DROPPED:2000] [USER:1000]
     # Real audio time:     0           1000          3000       4000
-    
+
     # Provider time 0 (start of silence) -> real audio 1000 (first dropped before silence)
     assert timeline.get_audio_duration_before_time(0) == 1000
     # Provider time 500 (end of silence, before entering user audio)
@@ -286,7 +286,7 @@ def test_alternating_dropped_and_silence():
 
 
 # ============================================================================
-# 边界条件测试
+# Edge Case Tests
 # ============================================================================
 
 
@@ -348,7 +348,7 @@ def test_partial_user_audio_with_dropped():
 
 
 # ============================================================================
-# Reset 功能测试
+# Reset Functionality Tests
 # ============================================================================
 
 
@@ -374,7 +374,7 @@ def test_reset_with_dropped_audio():
 
 
 # ============================================================================
-# 大数值测试
+# Large Value Tests
 # ============================================================================
 
 
@@ -390,4 +390,3 @@ def test_large_dropped_audio_values():
     assert timeline.get_audio_duration_before_time(0) == 3600000
     # Provider time 30 min should map to 1.5 hour real audio time
     assert timeline.get_audio_duration_before_time(1800000) == 5400000
-

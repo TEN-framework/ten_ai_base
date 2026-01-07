@@ -5,10 +5,8 @@
                 "type": "string"
             },
             "headers": {
-                "type": "object"
-            },
-            "params": {
-                "type": "object"
+                "type": "object",
+                "properties": {}
             },
             "dump": {
                 "type": "bool"
@@ -319,10 +317,12 @@
                         "type": "string"
                     },
                     "headers": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {}
                     },
                     "params": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {}
                     },
                     "dump": {
                         "type": "bool"

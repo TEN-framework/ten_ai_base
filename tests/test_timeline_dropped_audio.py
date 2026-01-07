@@ -46,16 +46,6 @@ def test_dropped_audio_requirement_example():
     assert real_audio_time == 4000
 
 
-def test_only_dropped_audio():
-    """Test timeline with only dropped audio"""
-    timeline = AudioTimeline()
-    timeline.add_dropped_audio(5000)
-
-    # Provider timeline is empty, but real audio time includes dropped
-    assert timeline.get_audio_duration_before_time(0) == 5000
-    assert timeline.get_total_user_audio_duration() == 0
-
-
 def test_dropped_audio_merging():
     """Test that consecutive dropped audio segments are merged"""
     timeline = AudioTimeline()

@@ -57,6 +57,7 @@ class UserTranslation(BaseModel):
     words: list[Word] | None = None
 
     transcript_text: str | None = None  # corresponding transcribed text
+    transcript_language: str = ""  # IETF BCP 47(RFC 4646), such as 'en-US' or 'zh-CN'
 
     metadata: dict | None = None  # additional metadata for the transcription
 

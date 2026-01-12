@@ -139,6 +139,7 @@ class LLMRequest(BaseModel):
     tools: Optional[list[LLMToolMetadata]] = None
     parameters: Optional[dict[str, Any]] = None
     prompt: Optional[str] = None
+    prompt_params: Optional[dict[str, Any]] = None
 
 class LLMRequestAbort(BaseModel):
     """

@@ -5,6 +5,7 @@
 #
 from abc import ABC, abstractmethod
 import asyncio
+import re
 import traceback
 
 from ten_runtime import (
@@ -95,15 +96,28 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
         """
         pass
 
-    def get_prompt(self, config_prompt: str) -> str:
+    def get_prompt(
+        self, config_prompt: str, prompt_params: dict | None = None
+    ) -> str:
         """
         Get the effective prompt to use.
         Returns dynamic_prompt if set by prompt_template extension,
         otherwise returns the config_prompt from property.json.
+
+        If prompt_params is provided and config_prompt contains {{placeholder}} patterns,
+        they will be replaced with the corresponding values from prompt_params.
         """
         if self.dynamic_prompt is not None:
             return self.dynamic_prompt
-        return config_prompt
+        if not prompt_params:
+            return config_prompt
+
+        def replace_placeholder(match):
+            key = match.group(1).strip()
+            return str(prompt_params.get(key, match.group(0)))
+
+        pattern = r"\{\{(\w+)\}\}"
+        return re.sub(pattern, replace_placeholder, config_prompt)
 
     async def on_cmd(self, async_ten_env: AsyncTenEnv, cmd: Cmd) -> None:
         """

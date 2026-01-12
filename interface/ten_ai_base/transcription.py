@@ -35,8 +35,27 @@ class UserTranscription(BaseModel):
     user_id: str = ""
 
     words: list[Word] | None = None
-    merged_turns: list[int] | None = None
+    merged_turns: list[int] | None = None    # TODO: should be removed in the future
     interruptable: bool = False  # whether the text can be interrupted
+
+    metadata: dict | None = None  # additional metadata for the transcription
+
+class UserTranslation(BaseModel):
+    object: str = "user.translation"  # [required] name of the object
+    text: str = ""  # [required] text for display
+    final: bool = True  # whether 'text' won't change anymore
+    start_ms: int = 0  # start time of the text, milliseconds since epoch
+    duration_ms: int = 0  # duration of the text, in milliseconds
+    language: str = ""  # IETF BCP 47(RFC 4646), such as 'en-US' or 'zh-CN'
+
+    turn_id: int = 0
+
+    # which stream/user the text belongs to
+    stream_id: int = 0
+    user_id: str = ""
+
+    transcript_text: str | None = None  # corresponding transcribed text
+    transcript_language: str | None = None  # IETF BCP 47(RFC 4646), such as 'en-US' or 'zh-CN'
 
     metadata: dict | None = None  # additional metadata for the transcription
 

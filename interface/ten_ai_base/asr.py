@@ -433,7 +433,10 @@ class AsyncASRBaseExtension(AsyncExtension):
                     self.buffered_frames_size -= len(discard_frame.get_buf())
                 self.buffered_frames.put_nowait(audio_frame)
                 self.buffered_frames_size += len(frame_buf)
-            # return anyway if not connected
+            else:
+                # Discard mode
+                self.audio_timeline.add_dropped_audio(len(frame_buf))
+
             return
 
         metadata, _ = audio_frame.get_property_to_json(PROPERTY_KEY_METADATA)

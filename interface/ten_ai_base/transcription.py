@@ -54,8 +54,6 @@ class UserTranslation(BaseModel):
     stream_id: int = 0
     user_id: str = ""
 
-    words: list[Word] | None = None
-
     transcript_text: str | None = None  # corresponding transcribed text
     transcript_language: str = ""  # IETF BCP 47(RFC 4646), such as 'en-US' or 'zh-CN'
 

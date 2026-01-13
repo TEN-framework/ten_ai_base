@@ -46,7 +46,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.stopped = False
         self.ten_env: AsyncTenEnv = None  # type: ignore
         self.session_id = None
-        self.metadata = None
+        self.metadata: dict | None = None
         self.finalize_id = None
         self.sent_buffer_length = 0
         self.buffered_frames = asyncio.Queue[AudioFrame]()
@@ -209,8 +209,11 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         asr_result.id = self.uuid
         # Only set metadata if asr_result doesn't already have metadata and self.metadata is available
-        if self.metadata is not None and not asr_result.metadata:
-            asr_result.metadata = self.metadata
+        if self.metadata is not None:
+            if not asr_result.metadata:
+                asr_result.metadata = self.metadata
+            else:
+                asr_result.metadata.update(self.metadata)
 
         # If this is the first result and there is a timestamp for the first
         # audio sent, calculate and send TTFW.

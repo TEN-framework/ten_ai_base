@@ -28,6 +28,7 @@ from .helper import AsyncQueue, AsyncEventEmitter, TimeHelper
 from .config import BaseConfig
 from .transcription import (
     UserTranscription,
+    UserTranslation,
     AssistantTranscription,
     Word,
     TurnStatus,
@@ -63,6 +64,7 @@ __all__ = [
     "EVENT_MEMORY_EXPIRED",
     "TimeHelper",
     "UserTranscription",
+    "UserTranslation",
     "AssistantTranscription",
     "Word",
     "TurnStatus",

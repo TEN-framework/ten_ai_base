@@ -7,7 +7,8 @@
       "manifest.json",
       "interface/**",
       "api/**",
-      "requirements.txt"
+      "requirements.txt",
+      "pyproject.toml"
     ]
   },
   "dependencies": [

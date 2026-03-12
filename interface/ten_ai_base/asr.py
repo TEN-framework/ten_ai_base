@@ -115,6 +115,9 @@ class AsyncASRBaseExtension(AsyncExtension):
             await self.finalize(self.session_id)
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
+        if self.ten_env is None:
+            self.ten_env = ten_env
+
         ten_env.log_info("on_stop")
 
         self.stopped = True

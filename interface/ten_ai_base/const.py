@@ -32,6 +32,8 @@ AUDIO_FRAME_OUTPUT_NAME = "pcm_frame"
 DATA_IN_ASR_FINALIZE = "asr_finalize"
 DATA_OUT_ASR_FINALIZE_END = "asr_finalize_end"
 DATA_OUT_METRICS = "metrics"
+DATA_OUT_CONNECTED = "connected"
+DATA_OUT_DISCONNECTED = "disconnected"
 
 PROPERTY_KEY_METADATA = "metadata"
 PROPERTY_KEY_SESSION_ID = "session_id"

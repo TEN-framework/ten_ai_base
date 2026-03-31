@@ -258,6 +258,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                 )
                 self.current_request_finished = True
 
+            # Track character metrics
+            self.metrics_add_output_characters(len(t.text))
+
             # Get audio stream from TTS
             self.ten_env.log_debug(
                 f"send_text_to_tts_server:  {t.text} of request_id: {t.request_id}",
@@ -315,6 +318,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                             await self.recorder_map[
                                 self.current_request_id
                             ].write(audio_chunk)
+
+                        # Track audio metrics
+                        self.metrics_add_recv_audio_chunks(audio_chunk)
 
                         # Send audio data
                         await self.send_tts_audio_data(audio_chunk)
@@ -464,7 +470,10 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
             request_total_audio_duration_ms=duration_ms,
             reason=reason,
         )
-        
+
+        # Send usage metrics before finishing request
+        await self.send_usage_metrics(request_id)
+
         # Close and clean up the recorder for this request_id
         if request_id in self.recorder_map:
             try:

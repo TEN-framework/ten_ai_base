@@ -22,6 +22,8 @@ from .const import (
     DATA_IN_ASR_FINALIZE,
     DATA_OUT_ASR_FINALIZE_END,
     DATA_OUT_METRICS,
+    DATA_OUT_CONNECTED,
+    DATA_OUT_DISCONNECTED,
     LOG_CATEGORY_KEY_POINT,
     PROPERTY_KEY_METADATA,
     PROPERTY_KEY_SESSION_ID,
@@ -66,6 +68,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         # States for TTLW calculation
         self.last_finalize_time: float | None = None
 
+        # Track the last connection state emitted externally.
+        self._connection_event_state = False
+
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         self.ten_env = ten_env
         asyncio.create_task(self._audio_frame_consumer())
@@ -78,6 +83,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             self._send_audio_actual_send_metrics_task()
         )
 
+        self._connection_event_state = False
         await self.start_connection()
 
     async def on_audio_frame(
@@ -123,6 +129,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.stopped = True
 
         await self.stop_connection()
+        self._connection_event_state = False
 
         if self.audio_actual_send_metrics_task:
             self.audio_actual_send_metrics_task.cancel()
@@ -315,6 +322,59 @@ class AsyncASRBaseExtension(AsyncExtension):
         await self.ten_env.send_data(asr_finalize_end_data)
         self.ten_env.log_info(
             f"send asr_finalize_end, finalize_id: {self.finalize_id}",
+            category=LOG_CATEGORY_KEY_POINT,
+        )
+
+    @final
+    async def send_connected(self) -> None:
+        """
+        Send a signal that the ASR service is connected.
+        """
+        await self._send_connection_event(DATA_OUT_CONNECTED, True)
+
+    @final
+    async def send_disconnected(self) -> None:
+        """
+        Send a signal that the ASR service is disconnected.
+        """
+        await self._send_connection_event(DATA_OUT_DISCONNECTED, False)
+
+    async def _send_connection_event(
+        self, event_name: str, connected: bool
+    ) -> None:
+        """
+        Send a connection lifecycle event if the state actually changed.
+        """
+        if self.ten_env is None:
+            return
+
+        if self._connection_event_state == connected:
+            self.ten_env.log_debug(
+                f"skip {event_name}: connection state already "
+                f"{'connected' if connected else 'disconnected'}."
+            )
+            return
+
+        connection_data = Data.create(event_name)
+        property_json = json.dumps(
+            {
+                "id": self.uuid,
+                "module": ModuleType.ASR,
+                "vendor": self.vendor(),
+                "metadata": ({} if self.metadata is None else self.metadata),
+            }
+        )
+
+        connection_data.set_property_from_json(
+            None,
+            property_json,
+        )
+
+        await self.ten_env.send_data(connection_data)
+        self._connection_event_state = connected
+
+        self.ten_env.log_info(
+            f"send {event_name}: {property_json}",
             category=LOG_CATEGORY_KEY_POINT,
         )
 

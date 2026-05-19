@@ -99,7 +99,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
             self.config.update_params()
 
             ten_env.log_info(
-                f"LOG_CATEGORY_KEY_POINT: {self.config.to_str(sensitive_handling=True)}",
+                f"config: {self.config.to_str(sensitive_handling=True)}",
                 category=LOG_CATEGORY_KEY_POINT,
             )
 
@@ -203,8 +203,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                 f"current_request_id: {self.current_request_id}, new request_id: {t.request_id}, current_request_finished: {self.current_request_finished}"
             )
             if t.request_id != self.current_request_id:
-                self.ten_env.log_debug(
-                    f"New TTS request with ID: {t.request_id}"
+                self.ten_env.log_info(
+                    f"request_status: request_id={t.request_id}, state=processing",
+                    category=LOG_CATEGORY_KEY_POINT,
                 )
                 self.first_chunk = True
                 self.sent_ts = datetime.now()
@@ -253,8 +254,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                 return
 
             if t.text_input_end:
-                self.ten_env.log_debug(
-                    f"finish session for request ID: {t.request_id}"
+                self.ten_env.log_info(
+                    f"request_status: request_id={t.request_id}, state=finalizing",
+                    category=LOG_CATEGORY_KEY_POINT,
                 )
                 self.current_request_finished = True
 
@@ -263,7 +265,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
 
             # Get audio stream from TTS
             self.ten_env.log_debug(
-                f"send_text_to_tts_server:  {t.text} of request_id: {t.request_id}",
+                f"send_text_to_tts_server: request_id={t.request_id}, text={t.text}, text_input_end={t.text_input_end}",
                 category=LOG_CATEGORY_VENDOR,
             )
             data = self.client.get(t.text, t.request_id)
@@ -277,7 +279,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                         self.total_audio_bytes += len(audio_chunk)
                         duration_ms = self._calculate_audio_duration_ms()
                         self.ten_env.log_debug(
-                            f"receive_audio:  duration: {duration_ms} of request id: {self.current_request_id}",
+                            f"receive_audio: request_id={self.current_request_id}, chunk_bytes={len(audio_chunk)}, duration_ms={duration_ms}",
                             category=LOG_CATEGORY_VENDOR,
                         )
 
@@ -463,12 +465,16 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
         
         if log_message:
             self.ten_env.log_debug(log_message)
-        
+
         await self.send_tts_audio_end(
             request_id=request_id,
             request_event_interval_ms=request_event_interval,
             request_total_audio_duration_ms=duration_ms,
             reason=reason,
+        )
+        self.ten_env.log_debug(
+            f"tts_audio_end: request_id={request_id}, reason={reason.name}, duration_ms={duration_ms}, interval_ms={request_event_interval}",
+            category=LOG_CATEGORY_KEY_POINT,
         )
 
         # Send usage metrics before finishing request
@@ -490,6 +496,10 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
         await self.finish_request(
             request_id=request_id,
             reason=reason,
+        )
+        self.ten_env.log_info(
+            f"request_status: request_id={request_id}, state={reason.name.lower()}",
+            category=LOG_CATEGORY_KEY_POINT,
         )
 
     async def _handle_error_with_text_input_end(

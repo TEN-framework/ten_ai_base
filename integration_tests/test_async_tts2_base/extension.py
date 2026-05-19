@@ -45,6 +45,9 @@ class TestAsyncTTS2Extension(AsyncTTS2BaseExtension):
         This method is called when the TTS request is made.
         It should yield audio data bytes.
         """
+        if t.metadata and t.metadata.get("assert_flush") is True:
+            assert t.flush is True
+
         # Send audio_start to set current_audio_request_id (required for metadata)
         await self.send_tts_audio_start(request_id=t.request_id)
 

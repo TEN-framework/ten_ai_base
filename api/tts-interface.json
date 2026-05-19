@@ -53,6 +53,9 @@
                     "text_input_end": {
                         "type": "bool"
                     },
+                    "flush": {
+                        "type": "bool"
+                    },
                     "metadata": {
                         "type": "object",
                         "properties": {

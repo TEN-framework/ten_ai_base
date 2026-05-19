@@ -21,6 +21,7 @@ class TTSTextInput(BaseModel):
     request_id: str
     text: str
     text_input_end: bool = False
+    flush: bool = False
     metadata: dict[str, Any] = {}  # additional metadata for the transcription
 
 

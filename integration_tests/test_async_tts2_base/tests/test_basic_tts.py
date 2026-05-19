@@ -42,9 +42,11 @@ class ExtensionTesterBasicTextToSpeech(AsyncExtensionTester):
                 "request_id": "test_request",
                 "text": "Hello, this is a test.",
                 "text_input_end": True,
+                "flush": True,
                 "metadata": {
                     "session_id": "test_session",
-                    "turn_id": 1
+                    "turn_id": 1,
+                    "assert_flush": True
                 }
             })
         )
@@ -87,6 +89,7 @@ class ExtensionTesterBasicTextToSpeech(AsyncExtensionTester):
         ten_env.log_info(f"Audio frame metadata: {metadata}")
 
         # Verify metadata matches what was sent in the request
+        metadata.pop("assert_flush", None)
         assert metadata == self.expected_metadata, (
             f"Metadata mismatch! Expected: {self.expected_metadata}, "
             f"Got: {metadata}"

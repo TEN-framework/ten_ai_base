@@ -20,6 +20,7 @@ from .message import (
 from .timeline import AudioTimeline
 from .const import (
     DATA_IN_ASR_FINALIZE,
+    DATA_IN_TRIGGER_CONNECT,
     DATA_OUT_ASR_FINALIZE_END,
     DATA_OUT_METRICS,
     LOG_CATEGORY_KEY_POINT,
@@ -66,8 +67,15 @@ class AsyncASRBaseExtension(AsyncExtension):
         # States for TTLW calculation
         self.last_finalize_time: float | None = None
 
+        self.auto_connect: bool = True
+        self._connection_lock = asyncio.Lock()
+
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         self.ten_env = ten_env
+
+        val, err = await ten_env.get_property_bool("auto_connect")
+        self.auto_connect = True if err else val
+
         asyncio.create_task(self._audio_frame_consumer())
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
@@ -78,7 +86,8 @@ class AsyncASRBaseExtension(AsyncExtension):
             self._send_audio_actual_send_metrics_task()
         )
 
-        await self.start_connection()
+        if self.auto_connect:
+            await self._ensure_connection()
 
     async def on_audio_frame(
         self, ten_env: AsyncTenEnv, audio_frame: AudioFrame
@@ -90,7 +99,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         ten_env.log_debug(f"on_data name: {data_name}")
 
         if data_name == DATA_IN_ASR_FINALIZE:
-            if not self.is_connected():
+            if not self._safe_is_connected():
                 ten_env.log_warn(
                     "asr_finalize: service not connected.",
                     category=LOG_CATEGORY_KEY_POINT,
@@ -113,6 +122,13 @@ class AsyncASRBaseExtension(AsyncExtension):
             )
 
             await self.finalize(self.session_id)
+
+        elif data_name == DATA_IN_TRIGGER_CONNECT:
+            ten_env.log_info(
+                "trigger_connect: initiating connection.",
+                category=LOG_CATEGORY_KEY_POINT,
+            )
+            await self._ensure_connection()
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         if self.ten_env is None:
@@ -419,6 +435,31 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         return uuid.uuid4().hex
 
+    def _safe_is_connected(self) -> bool:
+        """
+        Check connection state without letting provider exceptions break the base loop.
+        """
+        try:
+            return self.is_connected()
+        except Exception as e:
+            if self.ten_env is not None:
+                self.ten_env.log_warn(f"is_connected check failed: {e}")
+            return False
+
+    async def _ensure_connection(self) -> None:
+        """
+        Establish connection if not already connected.
+        """
+        async with self._connection_lock:
+            if self._safe_is_connected():
+                if self.ten_env is not None:
+                    self.ten_env.log_debug(
+                        "ensure_connection: already connected, skip."
+                    )
+                return
+
+            await self.start_connection()
+
     async def _handle_audio_frame(
         self, ten_env: AsyncTenEnv, audio_frame: AudioFrame
     ) -> None:
@@ -427,7 +468,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             ten_env.log_warn("send_frame: empty pcm_frame detected.")
             return
 
-        if not self.is_connected():
+        if not self._safe_is_connected():
             ten_env.log_debug("send_frame: service not connected.")
             buffer_strategy = self.buffer_strategy()
             if isinstance(buffer_strategy, ASRBufferConfigModeKeep):

@@ -13,6 +13,9 @@
             },
             "dump_path": {
                 "type": "string"
+            },
+            "auto_connect": {
+                "type": "bool"
             }
         }
     },
@@ -50,6 +53,12 @@
                         }
                     }
                 }
+            }
+        },
+        {
+            "name": "trigger_connect",
+            "property": {
+                "required": []
             }
         }
     ],

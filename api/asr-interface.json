@@ -56,10 +56,7 @@
             }
         },
         {
-            "name": "trigger_connect",
-            "property": {
-                "required": []
-            }
+            "name": "trigger_connect"
         }
     ],
     "data_out": [

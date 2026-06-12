@@ -6,10 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-def _install_fake_ten_runtime() -> None:
-    if "ten_runtime" in sys.modules:
-        return
-
+def _create_fake_ten_runtime_modules() -> dict[str, types.ModuleType]:
     ten_runtime = types.ModuleType("ten_runtime")
 
     class AsyncTenEnv:
@@ -65,25 +62,27 @@ def _install_fake_ten_runtime() -> None:
     ten_runtime.CmdResult = CmdResult
     ten_runtime.StatusCode = StatusCode
 
-    sys.modules["ten_runtime"] = ten_runtime
-
     async_ten_env_module = types.ModuleType("ten_runtime.async_ten_env")
     async_ten_env_module.AsyncTenEnv = AsyncTenEnv
-    sys.modules["ten_runtime.async_ten_env"] = async_ten_env_module
 
     audio_frame_module = types.ModuleType("ten_runtime.audio_frame")
     audio_frame_module.AudioFrame = AudioFrame
     audio_frame_module.AudioFrameDataFmt = AudioFrameDataFmt
-    sys.modules["ten_runtime.audio_frame"] = audio_frame_module
 
     cmd_module = types.ModuleType("ten_runtime.cmd")
     cmd_module.Cmd = Cmd
-    sys.modules["ten_runtime.cmd"] = cmd_module
 
     cmd_result_module = types.ModuleType("ten_runtime.cmd_result")
     cmd_result_module.CmdResult = CmdResult
     cmd_result_module.StatusCode = StatusCode
-    sys.modules["ten_runtime.cmd_result"] = cmd_result_module
+
+    return {
+        "ten_runtime": ten_runtime,
+        "ten_runtime.async_ten_env": async_ten_env_module,
+        "ten_runtime.audio_frame": audio_frame_module,
+        "ten_runtime.cmd": cmd_module,
+        "ten_runtime.cmd_result": cmd_result_module,
+    }
 
 
 def _load_module(module_name: str, file_path: Path):
@@ -98,62 +97,81 @@ def _load_module(module_name: str, file_path: Path):
 
 
 def _load_tts2_http_symbols():
+    fake_runtime_modules = _create_fake_ten_runtime_modules()
+    original_runtime_modules = {
+        name: sys.modules.get(name) for name in fake_runtime_modules
+    }
+    sys.modules.update(fake_runtime_modules)
+
+    package_root = (
+        Path(__file__).resolve().parents[1] / "interface" / "ten_ai_base"
+    )
+    package_name = "ten_ai_base"
+    package_module_names = [
+        package_name,
+        f"{package_name}.types",
+        f"{package_name}.message",
+        f"{package_name}.struct",
+        f"{package_name}.helper",
+        f"{package_name}.const",
+        f"{package_name}.tts2",
+        f"{package_name}.tts2_http",
+    ]
+    original_package_modules = {
+        name: sys.modules.get(name) for name in package_module_names
+    }
+    package = types.ModuleType(package_name)
+    package.__path__ = [str(package_root)]
+    sys.modules[package_name] = package
+
     try:
-        from ten_ai_base.message import TTSAudioEndReason
-        from ten_ai_base.struct import TTS2HttpResponseEventType, TTSTextInput
-        from ten_ai_base.tts2 import RequestState
-        from ten_ai_base.tts2_http import (
-            AsyncTTS2HttpClient,
-            AsyncTTS2HttpConfig,
-            AsyncTTS2HttpExtension,
-        )
-
-        return {
-            "AsyncTTS2HttpClient": AsyncTTS2HttpClient,
-            "AsyncTTS2HttpConfig": AsyncTTS2HttpConfig,
-            "AsyncTTS2HttpExtension": AsyncTTS2HttpExtension,
-            "RequestState": RequestState,
-            "TTSAudioEndReason": TTSAudioEndReason,
-            "TTS2HttpResponseEventType": TTS2HttpResponseEventType,
-            "TTSTextInput": TTSTextInput,
-        }
-    except ModuleNotFoundError:
-        _install_fake_ten_runtime()
-
-        package_root = (
-            Path(__file__).resolve().parents[1] / "interface" / "ten_ai_base"
-        )
-        package_name = "ten_ai_base"
-
-        if package_name not in sys.modules:
-            package = types.ModuleType(package_name)
-            package.__path__ = [str(package_root)]
-            sys.modules[package_name] = package
-
-        for module in ["types", "message", "struct", "helper", "const", "tts2", "tts2_http"]:
-            full_name = f"{package_name}.{module}"
-            if full_name not in sys.modules:
-                _load_module(full_name, package_root / f"{module}.py")
+        for module in [
+            "types",
+            "message",
+            "struct",
+            "helper",
+            "const",
+            "tts2",
+            "tts2_http",
+        ]:
+            _load_module(
+                f"{package_name}.{module}", package_root / f"{module}.py"
+            )
 
         return {
             "AsyncTTS2HttpClient": sys.modules[
-                "ten_ai_base.tts2_http"
+                f"{package_name}.tts2_http"
             ].AsyncTTS2HttpClient,
             "AsyncTTS2HttpConfig": sys.modules[
-                "ten_ai_base.tts2_http"
+                f"{package_name}.tts2_http"
             ].AsyncTTS2HttpConfig,
             "AsyncTTS2HttpExtension": sys.modules[
-                "ten_ai_base.tts2_http"
+                f"{package_name}.tts2_http"
             ].AsyncTTS2HttpExtension,
-            "RequestState": sys.modules["ten_ai_base.tts2"].RequestState,
+            "RequestState": sys.modules[
+                f"{package_name}.tts2"
+            ].RequestState,
             "TTSAudioEndReason": sys.modules[
-                "ten_ai_base.message"
+                f"{package_name}.message"
             ].TTSAudioEndReason,
             "TTS2HttpResponseEventType": sys.modules[
-                "ten_ai_base.struct"
+                f"{package_name}.struct"
             ].TTS2HttpResponseEventType,
-            "TTSTextInput": sys.modules["ten_ai_base.struct"].TTSTextInput,
+            "TTSTextInput": sys.modules[
+                f"{package_name}.struct"
+            ].TTSTextInput,
         }
+    finally:
+        for name, module in original_package_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+        for name, module in original_runtime_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
 
 
 SYMBOLS = _load_tts2_http_symbols()

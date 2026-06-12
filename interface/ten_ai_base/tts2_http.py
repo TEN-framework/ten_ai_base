@@ -208,6 +208,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                 )
                 self.first_chunk = True
                 self.sent_ts = datetime.now()
+                self.request_ts = None
                 self.current_request_id = t.request_id
                 self.current_request_finished = False
                 self.total_audio_bytes = 0  # Reset for new request
@@ -328,7 +329,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                         self.ten_env.log_debug(
                             "Received empty payload for TTS response"
                         )
-                        if self.request_ts and t.text_input_end:
+                        if self._current_request_needs_audio_end(
+                            t.text_input_end
+                        ):
                             await self._send_audio_end_and_finish(
                                 request_id=self.current_request_id,
                                 reason=TTSAudioEndReason.REQUEST_END,
@@ -340,7 +343,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                         "Received TTS_END event from TTS"
                     )
                     # Send TTS audio end event
-                    if self.request_ts and t.text_input_end:
+                    if self._current_request_needs_audio_end(
+                        t.text_input_end
+                    ):
                         await self._send_audio_end_and_finish(
                             request_id=self.current_request_id,
                             reason=TTSAudioEndReason.REQUEST_END,
@@ -396,19 +401,15 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
             
             # Handle case where loop ended normally but we didn't receive END event
             # This can happen if the stream ends without an explicit END event
-            if self.request_ts and t.text_input_end and self.current_request_id:
-                # Check if we haven't already sent audio_end (state should be FINALIZING)
-                if self.current_request_id in self.request_states:
-                    current_state = self.request_states[self.current_request_id]
-                    if current_state == RequestState.FINALIZING:
-                        self.ten_env.log_info(
-                            f"Stream ended without END event for request {self.current_request_id}, sending audio_end",
-                            category=LOG_CATEGORY_KEY_POINT,
-                        )
-                        await self._send_audio_end_and_finish(
-                            request_id=self.current_request_id,
-                            reason=TTSAudioEndReason.REQUEST_END,
-                        )
+            if self._current_request_needs_audio_end(t.text_input_end):
+                self.ten_env.log_info(
+                    f"Stream ended without END event for request {self.current_request_id}, sending audio_end",
+                    category=LOG_CATEGORY_KEY_POINT,
+                )
+                await self._send_audio_end_and_finish(
+                    request_id=self.current_request_id,
+                    reason=TTSAudioEndReason.REQUEST_END,
+                )
 
         except Exception as e:
             self.ten_env.log_error(
@@ -438,11 +439,20 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
 
     def _calculate_request_event_interval_ms(self) -> int:
         """Calculate request event interval in milliseconds."""
-        if self.request_ts:
+        start_ts = self.request_ts or self.sent_ts
+        if start_ts:
             return int(
-                (datetime.now() - self.request_ts).total_seconds() * 1000
+                (datetime.now() - start_ts).total_seconds() * 1000
             )
         return 0
+
+    def _current_request_needs_audio_end(self, text_input_end: bool) -> bool:
+        if not text_input_end or not self.current_request_id:
+            return False
+        return (
+            self.request_states.get(self.current_request_id)
+            == RequestState.FINALIZING
+        )
 
     async def _send_audio_end_and_finish(
         self,

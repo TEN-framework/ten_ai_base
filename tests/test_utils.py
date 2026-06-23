@@ -96,6 +96,29 @@ def test_redact_json_supports_custom_keys():
     assert data["normal"] == "visible"
 
 
+def test_redact_json_key_boundaries():
+    payload = {
+        "api_key": "default-123456",
+        "custom_flag": "custom-123456",
+        "extra_flag": "extra-123456",
+        "normal": "visible",
+    }
+
+    omitted = redact_json(payload)
+    assert omitted["api_key"] == mask_secret("default-123456")
+    assert omitted["custom_flag"] == "custom-123456"
+
+    single = redact_json(payload, json_keys={"custom_flag"})
+    assert single["api_key"] == "default-123456"
+    assert single["custom_flag"] == mask_secret("custom-123456")
+    assert single["extra_flag"] == "extra-123456"
+
+    multiple = redact_json(payload, json_keys={"custom_flag", "extra_flag"})
+    assert multiple["api_key"] == "default-123456"
+    assert multiple["custom_flag"] == mask_secret("custom-123456")
+    assert multiple["extra_flag"] == mask_secret("extra-123456")
+
+
 def test_redact_headers_masks_known_sensitive_headers():
     headers = {
         "Authorization": "Bearer abcdef123456",
@@ -140,3 +163,28 @@ def test_redact_headers_supports_custom_keys():
     sanitized = redact_headers(headers, header_keys={"x-custom-secret"})
     assert sanitized["x-custom-secret"] == mask_secret("abcdef123456")
     assert sanitized["normal"] == "visible"
+
+
+def test_redact_headers_header_key_boundaries():
+    headers = {
+        "Authorization": "Bearer abcdef123456",
+        "x-custom-secret": "custom-123456",
+        "x-extra-secret": "extra-123456",
+    }
+
+    omitted = redact_headers(headers)
+    assert omitted["Authorization"] == mask_secret("Bearer abcdef123456")
+    assert omitted["x-custom-secret"] == "custom-123456"
+
+    single = redact_headers(headers, header_keys={"x-custom-secret"})
+    assert single["Authorization"] == "Bearer abcdef123456"
+    assert single["x-custom-secret"] == mask_secret("custom-123456")
+    assert single["x-extra-secret"] == "extra-123456"
+
+    multiple = redact_headers(
+        headers,
+        header_keys={"x-custom-secret", "x-extra-secret"},
+    )
+    assert multiple["Authorization"] == "Bearer abcdef123456"
+    assert multiple["x-custom-secret"] == mask_secret("custom-123456")
+    assert multiple["x-extra-secret"] == mask_secret("extra-123456")

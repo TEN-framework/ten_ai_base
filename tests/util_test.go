@@ -120,6 +120,47 @@ func TestRedactHeadersUsesDefaultKeysWhenOmitted(t *testing.T) {
 	}
 }
 
+func TestRedactHeadersVariadicBoundaries(t *testing.T) {
+	headers := map[string]string{
+		"Authorization": "Bearer abcdef123456",
+		"x-custom-secret": "custom-123456",
+		"x-ignored":       "ignored-123456",
+	}
+
+	t.Run("omitted uses defaults", func(t *testing.T) {
+		got := ten_ai_base.RedactHeaders(headers)
+		if got["Authorization"] != ten_ai_base.MaskSecret("Bearer abcdef123456") {
+			t.Fatalf("Authorization = %q", got["Authorization"])
+		}
+		if got["x-custom-secret"] != "custom-123456" {
+			t.Fatalf("x-custom-secret = %q", got["x-custom-secret"])
+		}
+	})
+
+	t.Run("single custom slice", func(t *testing.T) {
+		got := ten_ai_base.RedactHeaders(headers, []string{"x-custom-secret"})
+		if got["Authorization"] != "Bearer abcdef123456" {
+			t.Fatalf("Authorization = %q", got["Authorization"])
+		}
+		if got["x-custom-secret"] != ten_ai_base.MaskSecret("custom-123456") {
+			t.Fatalf("x-custom-secret = %q", got["x-custom-secret"])
+		}
+	})
+
+	t.Run("single slice with multiple keys", func(t *testing.T) {
+		got := ten_ai_base.RedactHeaders(
+			headers,
+			[]string{"x-custom-secret", "x-ignored"},
+		)
+		if got["x-custom-secret"] != ten_ai_base.MaskSecret("custom-123456") {
+			t.Fatalf("x-custom-secret = %q", got["x-custom-secret"])
+		}
+		if got["x-ignored"] != ten_ai_base.MaskSecret("ignored-123456") {
+			t.Fatalf("x-ignored = %q", got["x-ignored"])
+		}
+	})
+}
+
 func TestRedactHeadersCoversAllDefaultHeaderKeys(t *testing.T) {
 	for _, headerKey := range ten_ai_base.DefaultHeaderKeys {
 		t.Run(headerKey, func(t *testing.T) {
@@ -215,6 +256,63 @@ func TestRedactJSONUsesDefaultKeysWhenOmitted(t *testing.T) {
 	if got["api_key"] != ten_ai_base.MaskSecret("abcdef123456") {
 		t.Fatalf("api_key = %#v", got["api_key"])
 	}
+}
+
+func TestRedactJSONVariadicBoundaries(t *testing.T) {
+	payload := map[string]any{
+		"api_key":     "default-123456",
+		"custom_flag": "custom-123456",
+		"extra_flag":  "extra-123456",
+		"normal":      "visible",
+	}
+
+	t.Run("omitted uses defaults", func(t *testing.T) {
+		redacted, err := ten_ai_base.RedactJSON(payload)
+		if err != nil {
+			t.Fatalf("RedactJSON() error = %v", err)
+		}
+		got := redacted.(map[string]any)
+		if got["api_key"] != ten_ai_base.MaskSecret("default-123456") {
+			t.Fatalf("api_key = %#v", got["api_key"])
+		}
+		if got["custom_flag"] != "custom-123456" {
+			t.Fatalf("custom_flag = %#v", got["custom_flag"])
+		}
+	})
+
+	t.Run("single custom slice", func(t *testing.T) {
+		redacted, err := ten_ai_base.RedactJSON(payload, []string{"custom_flag"})
+		if err != nil {
+			t.Fatalf("RedactJSON() error = %v", err)
+		}
+		got := redacted.(map[string]any)
+		if got["api_key"] != "default-123456" {
+			t.Fatalf("api_key = %#v", got["api_key"])
+		}
+		if got["custom_flag"] != ten_ai_base.MaskSecret("custom-123456") {
+			t.Fatalf("custom_flag = %#v", got["custom_flag"])
+		}
+		if got["extra_flag"] != "extra-123456" {
+			t.Fatalf("extra_flag = %#v", got["extra_flag"])
+		}
+	})
+
+	t.Run("single slice with multiple keys", func(t *testing.T) {
+		redacted, err := ten_ai_base.RedactJSON(
+			payload,
+			[]string{"custom_flag", "extra_flag"},
+		)
+		if err != nil {
+			t.Fatalf("RedactJSON() error = %v", err)
+		}
+		got := redacted.(map[string]any)
+		if got["custom_flag"] != ten_ai_base.MaskSecret("custom-123456") {
+			t.Fatalf("custom_flag = %#v", got["custom_flag"])
+		}
+		if got["extra_flag"] != ten_ai_base.MaskSecret("extra-123456") {
+			t.Fatalf("extra_flag = %#v", got["extra_flag"])
+		}
+	})
 }
 
 func TestRedactJSONCoversAllDefaultJSONKeys(t *testing.T) {

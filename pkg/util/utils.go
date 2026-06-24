@@ -151,15 +151,8 @@ func normalizeKey(key string) string {
 
 func isSensitiveKey(key string, normalizedKeys map[string]struct{}) bool {
 	normalized := normalizeKey(key)
-	if _, ok := normalizedKeys[normalized]; ok {
-		return true
-	}
-	for item := range normalizedKeys {
-		if strings.Contains(normalized, item) {
-			return true
-		}
-	}
-	return false
+	_, ok := normalizedKeys[normalized]
+	return ok
 }
 
 func redactValue(value any, normalizedKeys map[string]struct{}) any {
@@ -169,18 +162,18 @@ func redactValue(value any, normalizedKeys map[string]struct{}) any {
 	case string:
 		return MaskSecret(typed)
 	case []any:
-		redacted := make([]any, len(typed))
-		for i, item := range typed {
-			redacted[i] = redactJSONValue(item, normalizedKeys)
-		}
-		return redacted
+		return MaskSecret(mustJSON(typed))
 	case map[string]any:
-		redacted := make(map[string]any, len(typed))
-		for key, item := range typed {
-			redacted[key] = redactJSONValue(item, normalizedKeys)
-		}
-		return redacted
+		return MaskSecret(mustJSON(typed))
 	default:
 		return MaskSecret(fmt.Sprint(value))
 	}
+}
+
+func mustJSON(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprint(value)
+	}
+	return string(data)
 }

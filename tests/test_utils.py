@@ -119,6 +119,44 @@ def test_redact_json_key_boundaries():
     assert multiple["extra_flag"] == mask_secret("extra-123456")
 
 
+def test_redact_json_masks_composite_sensitive_values():
+    payload = {
+        "token": {"value": "secret-a"},
+        "api_key": ["secret-a", "secret-b"],
+    }
+
+    data = redact_json(payload)
+
+    assert data["token"] == mask_secret('{"value":"secret-a"}')
+    assert data["api_key"] == mask_secret('["secret-a","secret-b"]')
+
+
+def test_redact_json_matches_exact_keys_only():
+    payload = {
+        "monkey": "banana",
+        "keyboard_layout": "us",
+        "token_bucket": "bucket-secret",
+        "token": "real-secret",
+    }
+
+    data = redact_json(payload)
+
+    assert data["monkey"] == "banana"
+    assert data["keyboard_layout"] == "us"
+    assert data["token_bucket"] == "bucket-secret"
+    assert data["token"] == mask_secret("real-secret")
+
+
+@pytest.mark.parametrize("empty_collection", [[], set(), {}])
+def test_redact_json_keeps_empty_collections_as_empty_rules(empty_collection):
+    payload = {"api_key": "abcdef123456", "normal": "visible"}
+
+    data = redact_json(payload, json_keys=empty_collection)
+
+    assert data["api_key"] == "abcdef123456"
+    assert data["normal"] == "visible"
+
+
 def test_redact_headers_masks_known_sensitive_headers():
     headers = {
         "Authorization": "Bearer abcdef123456",
@@ -188,3 +226,16 @@ def test_redact_headers_header_key_boundaries():
     assert multiple["Authorization"] == "Bearer abcdef123456"
     assert multiple["x-custom-secret"] == mask_secret("custom-123456")
     assert multiple["x-extra-secret"] == mask_secret("extra-123456")
+
+
+@pytest.mark.parametrize("empty_collection", [[], set(), {}])
+def test_redact_headers_keeps_empty_collections_as_empty_rules(empty_collection):
+    headers = {
+        "Authorization": "Bearer abcdef123456",
+        "normal": "visible",
+    }
+
+    sanitized = redact_headers(headers, header_keys=empty_collection)
+
+    assert sanitized["Authorization"] == "Bearer abcdef123456"
+    assert sanitized["normal"] == "visible"

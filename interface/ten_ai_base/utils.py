@@ -4,6 +4,7 @@
 # See the LICENSE file for more information.
 #
 import hashlib
+import json
 import re
 from typing import Any, Collection, Mapping
 
@@ -61,7 +62,10 @@ def redact_headers(
     if not headers:
         return {}
 
-    effective_header_keys = {item.lower() for item in (header_keys or DEFAULT_HEADER_KEYS)}
+    effective_header_keys = {
+        item.lower()
+        for item in (DEFAULT_HEADER_KEYS if header_keys is None else header_keys)
+    }
     return {
         key: mask_secret(value) if key.lower() in effective_header_keys else value
         for key, value in headers.items()
@@ -78,11 +82,7 @@ def _normalized_json_keys(json_keys: Collection[str]) -> set[str]:
 
 def _is_sensitive_key(key: str, normalized_json_keys: set[str]) -> bool:
     normalized = _normalize_key(key)
-    if normalized in normalized_json_keys:
-        return True
-    if any(part in normalized for part in normalized_json_keys):
-        return True
-    return False
+    return normalized in normalized_json_keys
 
 
 def _redact_value(value: Any, normalized_json_keys: set[str]) -> Any:
@@ -91,12 +91,9 @@ def _redact_value(value: Any, normalized_json_keys: set[str]) -> Any:
     if isinstance(value, str):
         return mask_secret(value)
     if isinstance(value, list):
-        return [_redact_json(item, normalized_json_keys) for item in value]
+        return mask_secret(json.dumps(value, separators=(",", ":"), sort_keys=True))
     if isinstance(value, dict):
-        return {
-            key: _redact_json(item, normalized_json_keys)
-            for key, item in value.items()
-        }
+        return mask_secret(json.dumps(value, separators=(",", ":"), sort_keys=True))
     return mask_secret(str(value))
 
 
@@ -120,4 +117,5 @@ def redact_json(
     json_keys: Collection[str] | None = None,
 ) -> Any:
     """Recursively mask values whose keys match known sensitive JSON field names."""
-    return _redact_json(value, _normalized_json_keys(json_keys or DEFAULT_JSON_KEYS))
+    effective_json_keys = DEFAULT_JSON_KEYS if json_keys is None else json_keys
+    return _redact_json(value, _normalized_json_keys(effective_json_keys))

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	ten_ai_base "ten_ai_base/pkg/util"
+	ten_ai_base "github.com/TEN-framework/ten_ai_base/pkg/util"
 )
 
 func TestMaskSecret(t *testing.T) {
@@ -122,7 +122,7 @@ func TestRedactHeadersUsesDefaultKeysWhenOmitted(t *testing.T) {
 
 func TestRedactHeadersVariadicBoundaries(t *testing.T) {
 	headers := map[string]string{
-		"Authorization": "Bearer abcdef123456",
+		"Authorization":   "Bearer abcdef123456",
 		"x-custom-secret": "custom-123456",
 		"x-ignored":       "ignored-123456",
 	}
@@ -165,7 +165,7 @@ func TestRedactHeadersCoversAllDefaultHeaderKeys(t *testing.T) {
 	for _, headerKey := range ten_ai_base.DefaultHeaderKeys {
 		t.Run(headerKey, func(t *testing.T) {
 			got := ten_ai_base.RedactHeaders(map[string]string{
-				headerKey:       "abcdef123456",
+				headerKey:      "abcdef123456",
 				"Content-Type": "application/json",
 			})
 			if got[headerKey] != ten_ai_base.MaskSecret("abcdef123456") {
@@ -333,6 +333,48 @@ func TestRedactJSONCoversAllDefaultJSONKeys(t *testing.T) {
 				t.Fatalf("normal = %#v", got["normal"])
 			}
 		})
+	}
+}
+
+func TestRedactJSONMasksCompositeSensitiveValues(t *testing.T) {
+	redacted, err := ten_ai_base.RedactJSON(map[string]any{
+		"token":   map[string]any{"value": "secret-a"},
+		"api_key": []any{"secret-a", "secret-b"},
+	})
+	if err != nil {
+		t.Fatalf("RedactJSON() error = %v", err)
+	}
+	got := redacted.(map[string]any)
+	if got["token"] != ten_ai_base.MaskSecret(`{"value":"secret-a"}`) {
+		t.Fatalf("token = %#v", got["token"])
+	}
+	if got["api_key"] != ten_ai_base.MaskSecret(`["secret-a","secret-b"]`) {
+		t.Fatalf("api_key = %#v", got["api_key"])
+	}
+}
+
+func TestRedactJSONMatchesExactKeysOnly(t *testing.T) {
+	redacted, err := ten_ai_base.RedactJSON(map[string]any{
+		"monkey":          "banana",
+		"keyboard_layout": "us",
+		"token_bucket":    "bucket-secret",
+		"token":           "real-secret",
+	})
+	if err != nil {
+		t.Fatalf("RedactJSON() error = %v", err)
+	}
+	got := redacted.(map[string]any)
+	if got["monkey"] != "banana" {
+		t.Fatalf("monkey = %#v", got["monkey"])
+	}
+	if got["keyboard_layout"] != "us" {
+		t.Fatalf("keyboard_layout = %#v", got["keyboard_layout"])
+	}
+	if got["token_bucket"] != "bucket-secret" {
+		t.Fatalf("token_bucket = %#v", got["token_bucket"])
+	}
+	if got["token"] != ten_ai_base.MaskSecret("real-secret") {
+		t.Fatalf("token = %#v", got["token"])
 	}
 }
 

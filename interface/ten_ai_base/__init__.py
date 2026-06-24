@@ -37,6 +37,14 @@ from .message import ModuleType, ErrorMessage, MetricsMessage
 from .dumper import Dumper
 from .reconnect_manager import ReconnectManager
 from .audio_buffer_manager import AudioBufferManager
+from .utils import (
+    DEFAULT_HEADER_KEYS,
+    DEFAULT_JSON_KEYS,
+    encrypt,
+    mask_secret,
+    redact_headers,
+    redact_json,
+)
 
 # Specify what should be imported when a user imports * from the
 # ten_ai_base package.
@@ -74,4 +82,10 @@ __all__ = [
     "Dumper",
     "ReconnectManager",
     "AudioBufferManager",
+    "DEFAULT_JSON_KEYS",
+    "DEFAULT_HEADER_KEYS",
+    "encrypt",
+    "mask_secret",
+    "redact_json",
+    "redact_headers",
 ]

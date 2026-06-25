@@ -8,6 +8,8 @@ import json
 import re
 from typing import Any, Collection, Mapping
 
+# Default HTTP header names treated as sensitive by `redact_headers`.
+DEFAULT_HEADER_KEYS = frozenset({"authorization", "api-key", "x-api-key", "xi-api-key"})
 # Default JSON field names treated as sensitive by `redact_json`.
 DEFAULT_JSON_KEYS = frozenset(
     {
@@ -24,9 +26,8 @@ DEFAULT_JSON_KEYS = frozenset(
         "vendorkey",
         "vendorsecret",
     }
+    | DEFAULT_HEADER_KEYS
 )
-# Default HTTP header names treated as sensitive by `redact_headers`.
-DEFAULT_HEADER_KEYS = frozenset({"authorization", "api-key", "x-api-key", "xi-api-key"})
 
 
 def _mask_default(value: str) -> str:

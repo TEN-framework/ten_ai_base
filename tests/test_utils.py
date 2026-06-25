@@ -49,6 +49,8 @@ def test_default_key_sets_include_expected_items():
     assert "authorization" in DEFAULT_HEADER_KEYS
     assert "x-api-key" in DEFAULT_HEADER_KEYS
     assert "secretkey" in DEFAULT_JSON_KEYS
+    assert "x-api-key" in DEFAULT_JSON_KEYS
+    assert DEFAULT_HEADER_KEYS <= DEFAULT_JSON_KEYS
 
 
 @pytest.mark.parametrize("json_key", sorted(DEFAULT_JSON_KEYS))

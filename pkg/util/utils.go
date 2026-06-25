@@ -9,20 +9,23 @@ import (
 
 var DefaultHeaderKeys = []string{"authorization", "api-key", "x-api-key", "xi-api-key"}
 
-var DefaultJSONKeys = []string{
-	"accesskey",
-	"apikey",
-	"appkey",
-	"authorization",
-	"key",
-	"secret",
-	"secretid",
-	"secretkey",
-	"ststoken",
-	"token",
-	"vendorkey",
-	"vendorsecret",
-}
+var DefaultJSONKeys = append(
+	[]string{
+		"accesskey",
+		"apikey",
+		"appkey",
+		"authorization",
+		"key",
+		"secret",
+		"secretid",
+		"secretkey",
+		"ststoken",
+		"token",
+		"vendorkey",
+		"vendorsecret",
+	},
+	DefaultHeaderKeys...,
+)
 
 func maskDefault(value string) string {
 	if value == "" {

@@ -67,6 +67,35 @@ func TestDefaultKeys(t *testing.T) {
 	if len(ten_ai_base.DefaultHeaderKeys) == 0 || len(ten_ai_base.DefaultJSONKeys) == 0 {
 		t.Fatal("default key sets should not be empty")
 	}
+
+	jsonKeySet := make(map[string]struct{}, len(ten_ai_base.DefaultJSONKeys))
+	for _, key := range ten_ai_base.DefaultJSONKeys {
+		jsonKeySet[key] = struct{}{}
+	}
+
+	headerKeySet := make(map[string]struct{}, len(ten_ai_base.DefaultHeaderKeys))
+	for _, key := range ten_ai_base.DefaultHeaderKeys {
+		headerKeySet[key] = struct{}{}
+	}
+
+	if _, ok := headerKeySet["authorization"]; !ok {
+		t.Fatal("authorization should be in DefaultHeaderKeys")
+	}
+	if _, ok := headerKeySet["x-api-key"]; !ok {
+		t.Fatal("x-api-key should be in DefaultHeaderKeys")
+	}
+	if _, ok := jsonKeySet["secretkey"]; !ok {
+		t.Fatal("secretkey should be in DefaultJSONKeys")
+	}
+	if _, ok := jsonKeySet["x-api-key"]; !ok {
+		t.Fatal("x-api-key should be in DefaultJSONKeys")
+	}
+
+	for _, headerKey := range ten_ai_base.DefaultHeaderKeys {
+		if _, ok := jsonKeySet[headerKey]; !ok {
+			t.Fatalf("DefaultJSONKeys missing header key %q", headerKey)
+		}
+	}
 }
 
 func TestEncryptCallsMaskSecret(t *testing.T) {

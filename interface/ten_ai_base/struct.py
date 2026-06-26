@@ -57,6 +57,12 @@ class ASRResult(BaseModel):
     metadata: dict[str, Any] = {}  # additional metadata for the transcription
 
 
+class ASRResults(BaseModel):
+    """Batch ASR output with one or more segments in send order."""
+
+    results: list[ASRResult]
+
+
 class TTS2HttpResponseEventType(Enum):
     """Event types for TTS2 HTTP responses."""
     RESPONSE = 1  # Audio data chunk received

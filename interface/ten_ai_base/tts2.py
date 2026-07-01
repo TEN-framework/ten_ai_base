@@ -379,13 +379,18 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     f"(no active request, no buffered messages for this request)"
                 )
 
-            # Start processing a new request or continue processing current request
-            # This handles two cases:
-            # 1. _processing_request_id is None (no active request) - start new request
-            # 2. _processing_request_id == t.request_id (continue current request) - no state change needed
-            if self._processing_request_id != t.request_id:
+            # Start processing a new request, or repair a request preselected
+            # by finish_request() when releasing buffered messages.
+            if (
+                self._processing_request_id != t.request_id
+                or self.request_states.get(t.request_id) == RequestState.QUEUED
+            ):
                 self._processing_request_id = t.request_id
-                self._transition_state(t.request_id, RequestState.PROCESSING, "start processing")
+                self._transition_state(
+                    t.request_id,
+                    RequestState.PROCESSING,
+                    "start processing",
+                )
 
             try:
                 if t.text_input_end:

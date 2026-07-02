@@ -1,0 +1,145 @@
+{
+  "property": {
+    "properties": {
+      "url": {
+        "type": "string"
+      },
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "params": {
+        "type": "object",
+        "properties": {}
+      },
+      "dump": {
+        "type": "bool"
+      },
+      "dump_path": {
+        "type": "string"
+      }
+    }
+  },
+  "audio_frame_in": [
+    {
+      "name": "pcm_frame",
+      "property": {
+        "properties": {
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string"
+              },
+              "turn_id": {
+                "type": "int64"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "cmd_in": [
+    {
+      "name": "flush"
+    }
+  ],
+  "cmd_out": [
+    {
+      "name": "flush"
+    }
+  ],
+  "data_in": [
+    {
+        "name": "finalize"
+    }
+  ],
+  "data_out": [
+    {
+      "name": "error",
+      "property": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "code": {
+            "type": "int64"
+          },
+          "message": {
+            "type": "string"
+          },
+          "vendor_info": {
+            "type": "object",
+            "properties": {
+              "vendor": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string"
+              },
+              "turn_id": {
+                "type": "int64"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "module",
+        "code",
+        "message"
+      ]
+    },
+    {
+      "name": "metrics",
+      "property": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {}
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string"
+              },
+              "turn_id": {
+                "type": "int64"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "module",
+        "vendor",
+        "metrics"
+      ]
+    }
+  ]
+}

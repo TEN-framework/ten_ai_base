@@ -33,9 +33,23 @@ from .transcription import (
     Word,
     TurnStatus,
 )
-from .message import ModuleType, ErrorMessage, MetricsMessage
+from .message import (
+    MetadataKey,
+    ModuleConnectionStatus,
+    ModuleConnectionStatusChanged,
+    ModuleError,
+    ModuleErrorCode,
+    ModuleErrorVendorInfo,
+    ModuleMetricKey,
+    ModuleMetrics,
+    ModuleType,
+    ErrorMessage,
+    MetricsMessage,
+    VENDOR_METADATA_KEY,
+)
 from .dumper import Dumper
 from .reconnect_manager import ReconnectManager
+from .connection_status import ConnectionStatusMachine, ConnectionStatusTransition
 from .audio_buffer_manager import AudioBufferManager
 from .utils import (
     DEFAULT_HEADER_KEYS,
@@ -76,11 +90,22 @@ __all__ = [
     "AssistantTranscription",
     "Word",
     "TurnStatus",
+    "MetadataKey",
+    "ModuleConnectionStatus",
+    "ModuleConnectionStatusChanged",
+    "ModuleError",
+    "ModuleErrorCode",
+    "ModuleErrorVendorInfo",
+    "ModuleMetricKey",
+    "ModuleMetrics",
     "ModuleType",
     "ErrorMessage",
     "MetricsMessage",
+    "VENDOR_METADATA_KEY",
     "Dumper",
     "ReconnectManager",
+    "ConnectionStatusMachine",
+    "ConnectionStatusTransition",
     "AudioBufferManager",
     "DEFAULT_JSON_KEYS",
     "DEFAULT_HEADER_KEYS",

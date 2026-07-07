@@ -32,8 +32,8 @@ class ModuleMetricKey(str, Enum):
     TTS_TTFB = "ttfb"   # time to first byte
     LLM_TTFT = "ttft"   # time to first token
     LLM_TTFS = "ttfs"   # time to first sentence
-    REQUEST_TIME_MS = "request_time_ms"   # outbound request duration in ms
-    RESPONSE_TIME_MS = "response_time_ms"   # inbound response duration in ms
+    REQUEST_TIME_MS = "request_time_ms"   # outbound request timestamp in ms
+    RESPONSE_TIME_MS = "response_time_ms"   # inbound response timestamp in ms
     REQUEST_BYTES = "request_bytes"   # outbound request payload size in bytes
     RESPONSE_BYTES = "response_bytes"   # inbound response payload size in bytes
 

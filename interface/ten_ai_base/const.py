@@ -33,6 +33,7 @@ DATA_IN_ASR_FINALIZE = "asr_finalize"
 DATA_IN_TRIGGER_CONNECT = "trigger_connect"
 DATA_OUT_ASR_FINALIZE_END = "asr_finalize_end"
 DATA_OUT_METRICS = "metrics"
+DATA_OUT_CONNECTION_STATUS_CHANGED = "connection_status_changed"
 
 PROPERTY_KEY_METADATA = "metadata"
 PROPERTY_KEY_SESSION_ID = "session_id"

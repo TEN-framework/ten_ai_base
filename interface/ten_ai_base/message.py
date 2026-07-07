@@ -10,6 +10,9 @@ from typing import Any
 class MetadataKey(str, Enum):
     SESSION_ID = "session_id"
     TURN_ID = "turn_id"
+    VENDOR_METADATA = "vendor_metadata"
+
+VENDOR_METADATA_KEY = MetadataKey.VENDOR_METADATA.value
 
 class ModuleType(str, Enum):
     ASR = "asr"
@@ -29,6 +32,16 @@ class ModuleMetricKey(str, Enum):
     TTS_TTFB = "ttfb"   # time to first byte
     LLM_TTFT = "ttft"   # time to first token
     LLM_TTFS = "ttfs"   # time to first sentence
+    REQUEST_TIME_MS = "request_time_ms"   # outbound request timestamp in ms
+    RESPONSE_TIME_MS = "response_time_ms"   # inbound response timestamp in ms
+    REQUEST_BYTES = "request_bytes"   # outbound request payload size in bytes
+    RESPONSE_BYTES = "response_bytes"   # inbound response payload size in bytes
+
+
+class ModuleConnectionStatus(str, Enum):
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
 
 class ModuleErrorCode(str, Enum):
     OK = 0
@@ -67,6 +80,17 @@ class ModuleMetrics(BaseModel):
     module: str = ""    # module type
     vendor: str = ""    # vendor name
     metrics: dict[str, Any] = {}   # key-value pair metrics, e.g. {"ttfb": 100, "ttfs": 200}
+    metadata: dict[str, Any] = {}
+
+
+class ModuleConnectionStatusChanged(BaseModel):
+    id: str = ""        # uuid
+    module: str = ""    # module type
+    vendor_info: ModuleErrorVendorInfo | None = None
+    current: ModuleConnectionStatus | None = None
+    last: ModuleConnectionStatus | None = None
+    code: int = 0
+    message: str = ""
     metadata: dict[str, Any] = {}
 
 class ErrorMessage(BaseModel):

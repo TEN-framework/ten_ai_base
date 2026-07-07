@@ -4,24 +4,32 @@
 # See the LICENSE file for more information.
 #
 from abc import abstractmethod
-from typing import Any, final
+from typing import Any, Callable, final
+import functools
 import uuid
 
 from .struct import ASRResult
 from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigModeKeep
 
 from .message import (
+    MetadataKey,
+    ModuleConnectionStatus,
+    ModuleConnectionStatusChanged,
     ModuleError,
     ModuleErrorVendorInfo,
     ModuleMetricKey,
     ModuleMetrics,
     ModuleType,
+    VENDOR_METADATA_KEY,
 )
+from .connection_status import ConnectionStatusMachine, ConnectionStatusTransition
 from .timeline import AudioTimeline
+from .utils import redact_json
 from .const import (
     DATA_IN_ASR_FINALIZE,
     DATA_IN_TRIGGER_CONNECT,
     DATA_OUT_ASR_FINALIZE_END,
+    DATA_OUT_CONNECTION_STATUS_CHANGED,
     DATA_OUT_METRICS,
     LOG_CATEGORY_KEY_POINT,
     PROPERTY_KEY_METADATA,
@@ -40,7 +48,28 @@ import asyncio
 import json
 
 
+def _connecting_before_start_connection(
+    method: Callable[..., Any],
+) -> Callable[..., Any]:
+    @functools.wraps(method)
+    async def wrapper(
+        self: "AsyncASRBaseExtension", *args: Any, **kwargs: Any
+    ) -> Any:
+        await self._emit_connection_transition(
+            self._connection_machine.try_connecting(),
+            already_done="start_connection: already connecting, skip.",
+        )
+        return await method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class AsyncASRBaseExtension(AsyncExtension):
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if impl := cls.__dict__.get("start_connection"):
+            cls.start_connection = _connecting_before_start_connection(impl)  # type: ignore[method-assign]
+
     def __init__(self, name: str):
         super().__init__(name)
 
@@ -69,6 +98,32 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         self.auto_connect: bool = True
         self._connection_lock = asyncio.Lock()
+        self._connection_machine = ConnectionStatusMachine()
+
+    @property
+    def connection_status(self) -> ModuleConnectionStatus:
+        """Return the connection state maintained by the base class."""
+        return self._connection_machine.status
+
+    def _get_masked_vendor_metadata(self) -> dict[str, Any]:
+        return redact_json(self.vendor_metadata() or {})
+
+    def _build_report_metadata(self, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+        metadata: dict[str, Any] = {}
+        if self.metadata is not None:
+            metadata.update(self.metadata)
+        if self.session_id is not None:
+            metadata[MetadataKey.SESSION_ID] = self.session_id
+        if extra:
+            metadata.update(
+                {
+                    key: value
+                    for key, value in extra.items()
+                    if key != VENDOR_METADATA_KEY
+                }
+            )
+        metadata[VENDOR_METADATA_KEY] = self._get_masked_vendor_metadata()
+        return metadata
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         self.ten_env = ten_env
@@ -140,6 +195,11 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         await self.stop_connection()
 
+        await self._emit_connection_transition(
+            self._connection_machine.try_disconnected(code=0, message="stopped"),
+            already_done="on_stop: already disconnected, skip.",
+        )
+
         if self.audio_actual_send_metrics_task:
             self.audio_actual_send_metrics_task.cancel()
             self.audio_actual_send_metrics_task = None
@@ -153,6 +213,17 @@ class AsyncASRBaseExtension(AsyncExtension):
         cmd_result = CmdResult.create(StatusCode.OK, cmd)
         await ten_env.return_result(cmd_result)
 
+    def vendor_metadata(self) -> dict[str, Any]:
+        """
+        Return the current vendor configuration snapshot for reporting.
+        Should include key/url/model/region/mode (empty string when unavailable).
+        The base class redacts sensitive fields before sending events.
+
+        Subclasses may override to supply vendor-specific values; the default
+        empty snapshot keeps the ASR main path working without changes.
+        """
+        return {}
+
     @abstractmethod
     def vendor(self) -> str:
         """Get the name of the ASR vendor."""
@@ -160,7 +231,13 @@ class AsyncASRBaseExtension(AsyncExtension):
 
     @abstractmethod
     async def start_connection(self) -> None:
-        """Start the connection to the ASR service."""
+        """
+        Start the connection to the ASR service.
+
+        Subclasses override this hook only; the base class emits CONNECTING
+        before the override runs. Call on_connected() / on_disconnected() for
+        later state transitions — do not emit connecting manually.
+        """
         raise NotImplementedError("This method should be implemented in subclasses.")
 
     @abstractmethod
@@ -297,7 +374,7 @@ class AsyncASRBaseExtension(AsyncExtension):
                 "code": error.code,
                 "message": error.message,
                 "vendor_info": vendorInfo or {},
-                "metadata": ({} if self.metadata is None else self.metadata),
+                "metadata": self._build_report_metadata(error.metadata or None),
             }
         )
 
@@ -395,7 +472,7 @@ class AsyncASRBaseExtension(AsyncExtension):
                     "module": metrics.module,
                     "vendor": metrics.vendor,
                     "metrics": metrics.metrics,
-                    "metadata": ({} if self.metadata is None else self.metadata),
+                    "metadata": self._build_report_metadata(metrics.metadata or None),
                 }
             ),
         )
@@ -445,6 +522,84 @@ class AsyncASRBaseExtension(AsyncExtension):
             if self.ten_env is not None:
                 self.ten_env.log_warn(f"is_connected check failed: {e}")
             return False
+
+    @final
+    async def on_connected(self) -> None:
+        """
+        Vendor callback: connection is ready.
+        The base class validates the state machine and emits CONNECTED.
+        """
+        await self._emit_connection_transition(
+            self._connection_machine.try_connected(),
+            already_done="on_connected: already connected, skip.",
+        )
+
+    @final
+    async def on_disconnected(
+        self,
+        *,
+        code: int = 0,
+        message: str = "closed",
+        vendor_info: ModuleErrorVendorInfo | None = None,
+    ) -> None:
+        """
+        Vendor notification: connection closed (including connect failure).
+        The base class checks the state machine and emits DISCONNECTED.
+        """
+        await self._emit_connection_transition(
+            self._connection_machine.try_disconnected(code=code, message=message),
+            already_done="on_disconnected: already disconnected, skip.",
+            vendor_info=vendor_info,
+        )
+
+    async def _emit_connection_transition(
+        self,
+        transition: ConnectionStatusTransition | None,
+        *,
+        already_done: str,
+        vendor_info: ModuleErrorVendorInfo | None = None,
+    ) -> None:
+        if transition is None:
+            if self.ten_env is not None:
+                self.ten_env.log_debug(already_done)
+            return
+
+        if not transition.valid and self.ten_env is not None:
+            self.ten_env.log_warn(
+                f"invalid connection transition: {transition.last} -> {transition.current}"
+            )
+
+        await self._send_connection_status_changed(
+            transition, vendor_info=vendor_info
+        )
+
+    async def _send_connection_status_changed(
+        self,
+        transition: ConnectionStatusTransition,
+        *,
+        vendor_info: ModuleErrorVendorInfo | None = None,
+    ) -> None:
+        if self.ten_env is None:
+            return
+
+        event = ModuleConnectionStatusChanged(
+            id=self.uuid,
+            module=ModuleType.ASR,
+            vendor_info=vendor_info or ModuleErrorVendorInfo(vendor=self.vendor()),
+            current=transition.current,
+            last=transition.last,
+            code=transition.code,
+            message=transition.message,
+            metadata=self._build_report_metadata(),
+        )
+
+        connection_data = Data.create(DATA_OUT_CONNECTION_STATUS_CHANGED)
+        connection_data.set_property_from_json(None, event.model_dump_json())
+        await self.ten_env.send_data(connection_data)
+        self.ten_env.log_info(
+            f"send connection_status_changed: {event.model_dump(mode='json')}",
+            category=LOG_CATEGORY_KEY_POINT,
+        )
 
     async def _ensure_connection(self) -> None:
         """

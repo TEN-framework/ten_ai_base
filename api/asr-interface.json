@@ -223,6 +223,57 @@
             ]
         },
         {
+            "name": "connection_status_changed",
+            "property": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "module": {
+                        "type": "string"
+                    },
+                    "vendor_info": {
+                        "type": "object",
+                        "properties": {
+                            "vendor": {
+                                "type": "string"
+                            },
+                            "code": {
+                                "type": "string"
+                            },
+                            "message": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "current": {
+                        "type": "string"
+                    },
+                    "last": {
+                        "type": "string"
+                    },
+                    "code": {
+                        "type": "int64"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "vendor_metadata": {
+                                "type": "object",
+                                "properties": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
             "name": "connected",
             "property": {
                 "properties": {

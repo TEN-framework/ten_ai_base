@@ -196,7 +196,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         await self.stop_connection()
 
         await self._emit_connection_transition(
-            self._connection_machine.try_disconnected(code="0", message="stopped"),
+            self._connection_machine.try_disconnected(code=0, message="stopped"),
             already_done="on_stop: already disconnected, skip.",
         )
 
@@ -536,7 +536,11 @@ class AsyncASRBaseExtension(AsyncExtension):
 
     @final
     async def on_disconnected(
-        self, *, code: str = "0", message: str = "closed"
+        self,
+        *,
+        code: int = 0,
+        message: str = "closed",
+        vendor_info: ModuleErrorVendorInfo | None = None,
     ) -> None:
         """
         Vendor notification: connection closed (including connect failure).
@@ -545,6 +549,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         await self._emit_connection_transition(
             self._connection_machine.try_disconnected(code=code, message=message),
             already_done="on_disconnected: already disconnected, skip.",
+            vendor_info=vendor_info,
         )
 
     async def _emit_connection_transition(
@@ -552,6 +557,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         transition: ConnectionStatusTransition | None,
         *,
         already_done: str,
+        vendor_info: ModuleErrorVendorInfo | None = None,
     ) -> None:
         if transition is None:
             if self.ten_env is not None:
@@ -563,10 +569,15 @@ class AsyncASRBaseExtension(AsyncExtension):
                 f"invalid connection transition: {transition.last} -> {transition.current}"
             )
 
-        await self._send_connection_status_changed(transition)
+        await self._send_connection_status_changed(
+            transition, vendor_info=vendor_info
+        )
 
     async def _send_connection_status_changed(
-        self, transition: ConnectionStatusTransition
+        self,
+        transition: ConnectionStatusTransition,
+        *,
+        vendor_info: ModuleErrorVendorInfo | None = None,
     ) -> None:
         if self.ten_env is None:
             return
@@ -574,7 +585,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         event = ModuleConnectionStatusChanged(
             id=self.uuid,
             module=ModuleType.ASR,
-            vendor=self.vendor(),
+            vendor_info=vendor_info or ModuleErrorVendorInfo(vendor=self.vendor()),
             current=transition.current,
             last=transition.last,
             code=transition.code,
@@ -586,7 +597,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         connection_data.set_property_from_json(None, event.model_dump_json())
         await self.ten_env.send_data(connection_data)
         self.ten_env.log_info(
-            f"send connection_status_changed: {event.model_dump()}",
+            f"send connection_status_changed: {event.model_dump(mode='json')}",
             category=LOG_CATEGORY_KEY_POINT,
         )
 

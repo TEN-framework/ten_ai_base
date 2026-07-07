@@ -16,6 +16,7 @@ from ten_ai_base import (
     ModuleConnectionStatus,
     ModuleError,
     ModuleErrorCode,
+    ModuleErrorVendorInfo,
     ModuleMetrics,
     ModuleType,
     VENDOR_METADATA_KEY,
@@ -108,11 +109,24 @@ async def async_test_connection_status_transitions(asr_ext):
     assert asr_ext.connection_status == ModuleConnectionStatus.CONNECTED
     assert asr_ext.sent_data[1][1]["current"] == "connected"
 
-    await asr_ext.on_disconnected(code="1006", message="websocket closed")
+    await asr_ext.on_disconnected(
+        code=1006,
+        message="websocket closed",
+        vendor_info=ModuleErrorVendorInfo(
+            vendor="mock_vendor",
+            code="vendor-1006",
+            message="vendor websocket closed",
+        ),
+    )
     assert asr_ext.connection_status == ModuleConnectionStatus.DISCONNECTED
     assert asr_ext.sent_data[2][1]["current"] == "disconnected"
-    assert asr_ext.sent_data[2][1]["code"] == "1006"
+    assert asr_ext.sent_data[2][1]["code"] == 1006
     assert asr_ext.sent_data[2][1]["message"] == "websocket closed"
+    assert asr_ext.sent_data[2][1]["vendor_info"] == {
+        "vendor": "mock_vendor",
+        "code": "vendor-1006",
+        "message": "vendor websocket closed",
+    }
 
 
 def test_connection_status_includes_masked_vendor_metadata(asr_ext):

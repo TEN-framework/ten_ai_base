@@ -24,10 +24,10 @@ def test_happy_path_transitions():
     assert connected.valid
     assert connected.current == ModuleConnectionStatus.CONNECTED
 
-    disconnected = machine.try_disconnected(code="1006", message="closed")
+    disconnected = machine.try_disconnected(code=1006, message="closed")
     assert disconnected is not None
     assert disconnected.valid
-    assert disconnected.code == "1006"
+    assert disconnected.code == 1006
     assert disconnected.message == "closed"
     assert machine.status == ModuleConnectionStatus.DISCONNECTED
 
@@ -56,5 +56,5 @@ def test_disconnect_code_cleared_on_non_disconnect():
     machine.try_connecting()
     connected = machine.try_connected()
     assert connected is not None
-    assert connected.code == ""
+    assert connected.code == 0
     assert connected.message == ""

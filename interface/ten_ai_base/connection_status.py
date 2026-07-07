@@ -12,7 +12,7 @@ from .message import ModuleConnectionStatus
 class ConnectionStatusTransition:
     current: ModuleConnectionStatus
     last: ModuleConnectionStatus
-    code: str = ""
+    code: int = 0
     message: str = ""
     valid: bool = True
 
@@ -70,7 +70,7 @@ class ConnectionStatusMachine:
         return self._apply(ModuleConnectionStatus.CONNECTED)
 
     def try_disconnected(
-        self, *, code: str = "0", message: str = "closed"
+        self, *, code: int = 0, message: str = "closed"
     ) -> ConnectionStatusTransition | None:
         if self._status == ModuleConnectionStatus.DISCONNECTED:
             return None
@@ -84,7 +84,7 @@ class ConnectionStatusMachine:
         self,
         new_status: ModuleConnectionStatus,
         *,
-        code: str = "0",
+        code: int = 0,
         message: str = "",
     ) -> ConnectionStatusTransition:
         last_status = self._status
@@ -94,7 +94,7 @@ class ConnectionStatusMachine:
         return ConnectionStatusTransition(
             current=new_status,
             last=last_status,
-            code=code if disconnected else "",
+            code=code if disconnected else 0,
             message=message if disconnected else "",
             valid=valid,
         )

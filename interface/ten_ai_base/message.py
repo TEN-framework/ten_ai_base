@@ -32,10 +32,10 @@ class ModuleMetricKey(str, Enum):
     TTS_TTFB = "ttfb"   # time to first byte
     LLM_TTFT = "ttft"   # time to first token
     LLM_TTFS = "ttfs"   # time to first sentence
-    REQUEST_TIME_MS = "request_time_ms"
-    RESPONSE_TIME_MS = "response_time_ms"
-    REQUEST_BYTES = "request_bytes"
-    RESPONSE_BYTES = "response_bytes"
+    REQUEST_TIME_MS = "request_time_ms"   # outbound request duration in ms
+    RESPONSE_TIME_MS = "response_time_ms"   # inbound response duration in ms
+    REQUEST_BYTES = "request_bytes"   # outbound request payload size in bytes
+    RESPONSE_BYTES = "response_bytes"   # inbound response payload size in bytes
 
 
 class ModuleConnectionStatus(str, Enum):
@@ -86,10 +86,10 @@ class ModuleMetrics(BaseModel):
 class ModuleConnectionStatusChanged(BaseModel):
     id: str = ""        # uuid
     module: str = ""    # module type
-    vendor: str = ""    # vendor name
+    vendor_info: ModuleErrorVendorInfo | None = None
     current: ModuleConnectionStatus | None = None
     last: ModuleConnectionStatus | None = None
-    code: str = ""      # disconnect reason code; only meaningful on disconnected
+    code: int = 0
     message: str = ""
     metadata: dict[str, Any] = {}
 

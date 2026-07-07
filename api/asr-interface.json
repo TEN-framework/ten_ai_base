@@ -232,8 +232,19 @@
                     "module": {
                         "type": "string"
                     },
-                    "vendor": {
-                        "type": "string"
+                    "vendor_info": {
+                        "type": "object",
+                        "properties": {
+                            "vendor": {
+                                "type": "string"
+                            },
+                            "code": {
+                                "type": "string"
+                            },
+                            "message": {
+                                "type": "string"
+                            }
+                        }
                     },
                     "current": {
                         "type": "string"
@@ -242,7 +253,7 @@
                         "type": "string"
                     },
                     "code": {
-                        "type": "string"
+                        "type": "int64"
                     },
                     "message": {
                         "type": "string"

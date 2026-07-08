@@ -306,6 +306,20 @@
                 "vendor",
                 "metrics"
             ]
+        },
+        {
+            "name": "provide_features",
+            "property": {
+                "properties": {
+                    "features": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            },
+            "required": [
+                "features"
+            ]
         }
     ],
     "cmd_in": [

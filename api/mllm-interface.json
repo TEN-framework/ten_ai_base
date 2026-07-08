@@ -43,183 +43,72 @@
             }
         }
     ],
-    "data_in": [
+    "cmd_in": [
         {
-            "name": "mllm_client_set_message_context",
+            "name": "flush",
             "property": {
-                "properties": {}
-            }
-        },
-        {
-            "name": "mllm_client_request_message_item",
-            "property": {
-                "properties": {}
-            }
-        },
-        {
-            "name": "mllm_client_request_create_response",
-            "property": {
-                "properties": {}
-            }
-        },
-        {
-            "name": "mllm_client_request_register_tool",
-            "property": {
-                "properties": {}
-            }
-        },
-        {
-            "name": "mllm_client_function_call_output",
-            "property": {
-                "properties": {}
+                "properties": {
+                    "flush_id": {
+                        "type": "string"
+                    },
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
+                            }
+                        }
+                    }
+                }
             }
         }
     ],
     "data_out": [
         {
-            "name": "mllm_server_session_ready",
-            "property": {
-                "properties": {
-                    "metadata": {
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "name": "mllm_server_interrupted",
-            "property": {
-                "properties": {
-                    "metadata": {
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "name": "mllm_server_input_transcript",
-            "property": {
-                "properties": {
-                    "delta": {
-                        "type": "string"
-                    },
-                    "content": {
-                        "type": "string"
-                    },
-                    "final": {
-                        "type": "bool"
-                    },
-                    "metadata": {
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "required": [
-                "delta",
-                "content",
-                "final"
-            ]
-        },
-        {
-            "name": "mllm_server_output_transcript",
-            "property": {
-                "properties": {
-                    "delta": {
-                        "type": "string"
-                    },
-                    "content": {
-                        "type": "string"
-                    },
-                    "final": {
-                        "type": "bool"
-                    },
-                    "metadata": {
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "required": [
-                "delta",
-                "content",
-                "final"
-            ]
-        },
-        {
-            "name": "mllm_server_function_call",
-            "property": {
-                "properties": {
-                    "call_id": {
-                        "type": "string"
-                    },
-                    "name": {
-                        "type": "string"
-                    },
-                    "arguments": {
-                        "type": "string"
-                    },
-                    "metadata": {
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "required": [
-                "call_id",
-                "name",
-                "arguments"
-            ]
-        },
-        {
-            "name": "error",
+            "name": "asr_result",
             "property": {
                 "properties": {
                     "id": {
                         "type": "string"
                     },
-                    "module": {
+                    "text": {
                         "type": "string"
                     },
-                    "code": {
+                    "final": {
+                        "type": "bool"
+                    },
+                    "start_ms": {
                         "type": "int64"
                     },
-                    "message": {
+                    "duration_ms": {
+                        "type": "int64"
+                    },
+                    "language": {
                         "type": "string"
                     },
-                    "vendor_info": {
-                        "type": "object",
-                        "properties": {
-                            "vendor": {
-                                "type": "string"
-                            },
-                            "code": {
-                                "type": "string"
-                            },
-                            "message": {
-                                "type": "string"
+                    "words": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "word": {
+                                    "type": "string"
+                                },
+                                "start_ms": {
+                                    "type": "int64"
+                                },
+                                "duration_ms": {
+                                    "type": "int64"
+                                },
+                                "stable": {
+                                    "type": "bool"
+                                }
                             }
                         }
                     },
@@ -237,10 +126,207 @@
                 }
             },
             "required": [
-                "module",
-                "code",
-                "message"
+                "id",
+                "text",
+                "final",
+                "start_ms",
+                "duration_ms"
             ]
+        },
+        {
+            "name": "text_data",
+            "property": {
+                "properties": {
+                    "text": {
+                        "type": "string"
+                    },
+                    "is_final": {
+                        "type": "bool"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "response_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "sos",
+            "property": {
+                "properties": {
+                    "sos_id": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "timestamp": {
+                        "type": "int64"
+                    },
+                    "timestamp_raw": {
+                        "type": "int64"
+                    },
+                    "pre_padding_len_of_sos_ms": {
+                        "type": "int64"
+                    },
+                    "persistent_voice_len_of_sos_ms": {
+                        "type": "int64"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "eos",
+            "property": {
+                "properties": {
+                    "eos_id": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "timestamp": {
+                        "type": "int64"
+                    },
+                    "timestamp_raw": {
+                        "type": "int64"
+                    },
+                    "silence_duration_ms": {
+                        "type": "int64"
+                    },
+                    "max_duration_ms": {
+                        "type": "int64"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "thinking_started",
+            "property": {
+                "properties": {
+                    "response_id": {
+                        "type": "string"
+                    },
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "response_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "thinking_ended",
+            "property": {
+                "properties": {
+                    "response_id": {
+                        "type": "string"
+                    },
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "reason": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "response_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "tts_audio_start",
+            "property": {
+                "properties": {
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "source": {
+                                "type": "string"
+                            },
+                            "response_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "tts_audio_end",
+            "property": {
+                "properties": {
+                    "request_id": {
+                        "type": "string"
+                    },
+                    "request_event_interval_ms": {
+                        "type": "int64"
+                    },
+                    "request_total_audio_duration_ms": {
+                        "type": "int64"
+                    },
+                    "reason": {
+                        "type": "int64"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "source": {
+                                "type": "string"
+                            },
+                            "response_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         },
         {
             "name": "metrics",
@@ -276,6 +362,58 @@
                 "module",
                 "vendor",
                 "metrics"
+            ]
+        },
+        {
+            "name": "error",
+            "property": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "module": {
+                        "type": "string"
+                    },
+                    "code": {
+                        "type": "int64"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "fatal_error": {
+                        "type": "bool"
+                    },
+                    "vendor_info": {
+                        "type": "object",
+                        "properties": {
+                            "vendor": {
+                                "type": "string"
+                            },
+                            "code": {
+                                "type": "string"
+                            },
+                            "message": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
+                            }
+                        }
+                    }
+                }
+            },
+            "required": [
+                "module",
+                "code",
+                "message"
             ]
         }
     ]

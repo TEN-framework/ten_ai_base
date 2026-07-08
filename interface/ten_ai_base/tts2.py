@@ -8,10 +8,13 @@ import asyncio
 from enum import Enum
 import json
 import traceback
+from typing import final
 import uuid
 
 from .helper import AsyncQueue
 from .message import (
+    ModuleConnectionStatus,
+    ModuleConnectionStatusChanged,
     ModuleError,
     ModuleMetricKey,
     ModuleMetrics,
@@ -28,8 +31,13 @@ from ten_runtime.async_ten_env import AsyncTenEnv
 from ten_runtime.audio_frame import AudioFrame, AudioFrameDataFmt
 from ten_runtime.cmd import Cmd
 from ten_runtime.cmd_result import CmdResult, StatusCode
-from ten_ai_base.const import LOG_CATEGORY_VENDOR
-from ten_ai_base.const import LOG_CATEGORY_KEY_POINT
+from ten_ai_base.const import (
+    DATA_OUT_CONNECTION_STATUS_CHANGED,
+    LOG_CATEGORY_VENDOR,
+    LOG_CATEGORY_KEY_POINT,
+    VENDOR_METADATA_KEY,
+)
+from ten_ai_base.utils import redact_json
 
 DATA_TTS_TEXT_INPUT = "tts_text_input"
 DATA_TTS_TEXT_RESULT = "tts_text_result"
@@ -102,6 +110,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # Set in send_tts_audio_start(), reset in send_tts_audio_end() and flush
         # Used by send_tts_audio_data() to attach correct metadata to audio frames
         self.current_audio_request_id = None
+        self._connection_status = ModuleConnectionStatus.DISCONNECTED
+        self._connection_lock = asyncio.Lock()
 
     def _can_transition_to(self, request_id: str, new_state: RequestState) -> bool:
         """Check if state transition is valid."""
@@ -176,6 +186,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         # send laster time before stop
         await self.send_usage_metrics()
+        await self.on_disconnected(code="0", message="stopped")
         await super().on_stop(ten_env)
         await self._flush_input_items()
         if self.loop_task:
@@ -534,7 +545,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         turn_id: int = -1,
         extra_metadata: dict | None = None,
     ) -> None:
-        new_metadata = self.update_metadata(request_id, extra_metadata)
+        combined_metadata = {}
+        if error.metadata:
+            combined_metadata.update(error.metadata)
+        if extra_metadata:
+            combined_metadata.update(extra_metadata)
+        new_metadata = self.update_metadata(
+            request_id, combined_metadata or None
+        )
         """
         Send an error message related to TTS processing.
         """
@@ -650,6 +668,95 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         )
         await self.send_metrics(metrics, request_id)
         self.ten_env.log_debug(f"metrics_connect_delay: {metrics}")
+
+    async def _transition_connection_status(
+        self,
+        current: ModuleConnectionStatus,
+        *,
+        code: str = "0",
+        message: str = "",
+    ) -> None:
+        last = self._connection_status
+        if last == current:
+            return
+
+        self._connection_status = current
+        event = ModuleConnectionStatusChanged(
+            id=self._active_connection_event_id(),
+            module=ModuleType.TTS,
+            current=current,
+            last=last,
+            code=code,
+            message=message,
+            metadata=self.update_metadata(self._active_request_id(), None),
+        )
+        event_payload = event.model_dump(mode="json", exclude_none=True)
+        event_payload["vendor"] = self.vendor()
+
+        data = Data.create(DATA_OUT_CONNECTION_STATUS_CHANGED)
+        data.set_property_from_json(None, json.dumps(event_payload))
+        await self.ten_env.send_data(data)
+        self.ten_env.log_info(
+            f"tts_connection_status_changed: {event_payload}",
+            category=LOG_CATEGORY_KEY_POINT,
+        )
+
+    def _active_request_id(self) -> str | None:
+        return self._processing_request_id or self.current_audio_request_id
+
+    def _active_connection_event_id(self) -> str:
+        return self._active_request_id() or self.get_uuid()
+
+    @property
+    def connection_status(self) -> ModuleConnectionStatus:
+        return self._connection_status
+
+    def is_connected(self) -> bool:
+        """
+        Check whether the vendor connection is ready.
+        """
+        return self.connection_status == ModuleConnectionStatus.CONNECTED
+
+    def vendor_metadata(self) -> dict:
+        """
+        Return a sanitized snapshot of vendor connection configuration.
+        """
+        return {}
+
+    @final
+    async def on_connecting(self) -> None:
+        """
+        Notify the base class that the vendor connection is starting.
+        """
+        await self._transition_connection_status(
+            ModuleConnectionStatus.CONNECTING,
+            code="0",
+            message="connecting",
+        )
+
+    @final
+    async def on_connected(self) -> None:
+        """
+        Notify the base class that the vendor connection is open.
+        """
+        await self._transition_connection_status(
+            ModuleConnectionStatus.CONNECTED,
+            code="0",
+            message="connected",
+        )
+
+    @final
+    async def on_disconnected(
+        self, *, code: str = "0", message: str = "closed"
+    ) -> None:
+        """
+        Notify the base class that the vendor connection is closed.
+        """
+        await self._transition_connection_status(
+            ModuleConnectionStatus.DISCONNECTED,
+            code=code,
+            message=message,
+        )
 
     async def finish_request(
         self,
@@ -805,6 +912,15 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             new_metadata = self.metadatas.get(request_id).copy()
         if metadata:
             new_metadata.update(metadata)
+        vendor_metadata = redact_json(self.vendor_metadata() or {})
+        if vendor_metadata:
+            existing_vendor_metadata = new_metadata.get(VENDOR_METADATA_KEY, {})
+            if isinstance(existing_vendor_metadata, dict):
+                merged_vendor_metadata = existing_vendor_metadata.copy()
+                merged_vendor_metadata.update(vendor_metadata)
+                new_metadata[VENDOR_METADATA_KEY] = merged_vendor_metadata
+            else:
+                new_metadata[VENDOR_METADATA_KEY] = vendor_metadata
         return new_metadata
 
     async def cancel_tts(self) -> None:

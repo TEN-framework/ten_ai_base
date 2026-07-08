@@ -37,6 +37,7 @@ DATA_OUT_CONNECTION_STATUS_CHANGED = "connection_status_changed"
 
 PROPERTY_KEY_METADATA = "metadata"
 PROPERTY_KEY_SESSION_ID = "session_id"
+VENDOR_METADATA_KEY = "vendor_metadata"
 
 LOG_CATEGORY_KEY_POINT = "key_point"
 LOG_CATEGORY_VENDOR = "vendor"

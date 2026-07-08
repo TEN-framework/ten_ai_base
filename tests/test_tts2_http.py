@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import json
 import sys
 import types
 from datetime import datetime
@@ -28,10 +29,18 @@ def _create_fake_ten_runtime_modules() -> dict[str, types.ModuleType]:
         async def on_deinit(self, ten_env) -> None:
             return None
 
+    class FakeData:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.properties = {}
+
+        def set_property_from_json(self, path, value) -> None:
+            self.properties[path] = value
+
     class Data:
         @staticmethod
         def create(name: str):
-            return types.SimpleNamespace(name=name)
+            return FakeData(name)
 
     class AudioFrame:
         @staticmethod
@@ -114,6 +123,7 @@ def _load_tts2_http_symbols():
         f"{package_name}.struct",
         f"{package_name}.helper",
         f"{package_name}.const",
+        f"{package_name}.utils",
         f"{package_name}.tts2",
         f"{package_name}.tts2_http",
     ]
@@ -131,6 +141,7 @@ def _load_tts2_http_symbols():
             "struct",
             "helper",
             "const",
+            "utils",
             "tts2",
             "tts2_http",
         ]:
@@ -151,6 +162,12 @@ def _load_tts2_http_symbols():
             "RequestState": sys.modules[
                 f"{package_name}.tts2"
             ].RequestState,
+            "ModuleConnectionStatus": sys.modules[
+                f"{package_name}.message"
+            ].ModuleConnectionStatus,
+            "ModuleError": sys.modules[
+                f"{package_name}.message"
+            ].ModuleError,
             "TTSAudioEndReason": sys.modules[
                 f"{package_name}.message"
             ].TTSAudioEndReason,
@@ -160,6 +177,9 @@ def _load_tts2_http_symbols():
             "TTSTextInput": sys.modules[
                 f"{package_name}.struct"
             ].TTSTextInput,
+            "mask_secret": sys.modules[
+                f"{package_name}.utils"
+            ].mask_secret,
         }
     finally:
         for name, module in original_package_modules.items():
@@ -179,12 +199,17 @@ AsyncTTS2HttpClient = SYMBOLS["AsyncTTS2HttpClient"]
 AsyncTTS2HttpConfig = SYMBOLS["AsyncTTS2HttpConfig"]
 AsyncTTS2HttpExtension = SYMBOLS["AsyncTTS2HttpExtension"]
 RequestState = SYMBOLS["RequestState"]
+ModuleConnectionStatus = SYMBOLS["ModuleConnectionStatus"]
 TTSAudioEndReason = SYMBOLS["TTSAudioEndReason"]
 TTS2HttpResponseEventType = SYMBOLS["TTS2HttpResponseEventType"]
 TTSTextInput = SYMBOLS["TTSTextInput"]
+mask_secret = SYMBOLS["mask_secret"]
 
 
 class FakeTenEnv:
+    def __init__(self) -> None:
+        self.sent_data = []
+
     def log_info(self, *args, **kwargs) -> None:
         return None
 
@@ -196,6 +221,9 @@ class FakeTenEnv:
 
     def log_error(self, *args, **kwargs) -> None:
         return None
+
+    async def send_data(self, data) -> None:
+        self.sent_data.append(data)
 
 
 class FakeConfig(AsyncTTS2HttpConfig):
@@ -249,6 +277,9 @@ class RecordingHttpExtension(AsyncTTS2HttpExtension):
 
     def vendor(self) -> str:
         return "test_vendor"
+
+    def vendor_metadata(self) -> dict:
+        return {"key": "sk-test-secret-1234", "url": "wss://tts.example"}
 
     def synthesize_audio_sample_rate(self) -> int:
         return 16000
@@ -315,6 +346,80 @@ def _mark_request_finalizing(
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+def _data_payload(data):
+    return json.loads(data.properties[None])
+
+
+def test_connection_status_events_are_sent_by_base():
+    extension = RecordingHttpExtension([])
+
+    _run(extension.on_connecting())
+    _run(extension.on_connected())
+    _run(extension.on_disconnected(code="3001", message="websocket closed"))
+
+    assert extension.connection_status == ModuleConnectionStatus.DISCONNECTED
+    assert [data.name for data in extension.ten_env.sent_data] == [
+        "connection_status_changed",
+        "connection_status_changed",
+        "connection_status_changed",
+    ]
+    payloads = [_data_payload(data) for data in extension.ten_env.sent_data]
+    assert [payload["current"] for payload in payloads] == [
+        "connecting",
+        "connected",
+        "disconnected",
+    ]
+    assert payloads[0]["last"] == "disconnected"
+    assert payloads[2]["code"] == 3001
+    assert payloads[2]["message"] == "websocket closed"
+    assert payloads[2]["metadata"]["vendor_metadata"] == {
+        "key": mask_secret("sk-test-secret-1234"),
+        "url": "wss://tts.example",
+    }
+    assert payloads[2]["vendor"] == "test_vendor"
+
+
+def test_vendor_metadata_is_added_to_metrics_and_errors():
+    extension = RecordingHttpExtension([])
+    extension.metadatas["req"] = {
+        "session_id": "session-1",
+        "vendor_metadata": {"region": "us"},
+    }
+
+    _run(extension.metrics_connect_delay(42, request_id="req"))
+    _run(
+        extension.send_tts_error(
+            request_id="req",
+            error=SYMBOLS["ModuleError"](
+                code=1000,
+                message="failed",
+                metadata={"turn_id": 7},
+            ),
+        )
+    )
+
+    metrics_payload = _data_payload(extension.ten_env.sent_data[0])
+    error_payload = _data_payload(extension.ten_env.sent_data[1])
+
+    assert metrics_payload["metadata"] == {
+        "session_id": "session-1",
+        "vendor_metadata": {
+            "region": "us",
+            "key": mask_secret("sk-test-secret-1234"),
+            "url": "wss://tts.example",
+        },
+    }
+    assert error_payload["metadata"] == {
+        "session_id": "session-1",
+        "turn_id": 7,
+        "vendor_metadata": {
+            "region": "us",
+            "key": mask_secret("sk-test-secret-1234"),
+            "url": "wss://tts.example",
+        },
+    }
 
 
 def test_zero_audio_end_finishes_without_audio_start():

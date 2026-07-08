@@ -172,6 +172,55 @@
             }
         },
         {
+            "name": "connection_status_changed",
+            "property": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "module": {
+                        "type": "string"
+                    },
+                    "vendor": {
+                        "type": "string"
+                    },
+                    "current": {
+                        "type": "string"
+                    },
+                    "last": {
+                        "type": "string"
+                    },
+                    "code": {
+                        "type": "int64"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string"
+                            },
+                            "turn_id": {
+                                "type": "int64"
+                            },
+                            "vendor_metadata": {
+                                "type": "object",
+                                "properties": {}
+                            }
+                        }
+                    }
+                }
+            },
+            "required": [
+                "module",
+                "vendor",
+                "current",
+                "last"
+            ]
+        },
+        {
             "name": "tts_audio_start",
             "property": {
                 "properties": {
@@ -260,6 +309,10 @@
                             },
                             "turn_id": {
                                 "type": "int64"
+                            },
+                            "vendor_metadata": {
+                                "type": "object",
+                                "properties": {}
                             }
                         }
                     }
@@ -296,6 +349,10 @@
                             },
                             "turn_id": {
                                 "type": "int64"
+                            },
+                            "vendor_metadata": {
+                                "type": "object",
+                                "properties": {}
                             }
                         }
                     }

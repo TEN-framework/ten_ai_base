@@ -223,6 +223,20 @@
             ]
         },
         {
+            "name": "provide_features",
+            "property": {
+                "properties": {
+                    "features": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            },
+            "required": [
+                "features"
+            ]
+        },
+        {
             "name": "connection_status_changed",
             "property": {
                 "properties": {

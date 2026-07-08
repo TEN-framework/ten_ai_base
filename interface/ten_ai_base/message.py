@@ -83,6 +83,10 @@ class ModuleMetrics(BaseModel):
     metadata: dict[str, Any] = {}
 
 
+class ProvideFeaturesPayload(BaseModel):
+    features: dict[str, Any]
+
+
 class ModuleConnectionStatusChanged(BaseModel):
     id: str = ""        # uuid
     module: str = ""    # module type

@@ -12,6 +12,7 @@ from typing import final
 import uuid
 
 from .helper import AsyncQueue
+from .features import send_provide_features
 from .message import (
     ModuleConnectionStatus,
     ModuleConnectionStatusChanged,
@@ -179,6 +180,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         await super().on_start(ten_env)
+        await send_provide_features(
+            ten_env,
+            {"tts.vendor": self.vendor()},
+        )
         if self.loop_task is None:
             self.loop = asyncio.get_event_loop()
             self.loop_task = self.loop.create_task(self._process_input_queue(ten_env))

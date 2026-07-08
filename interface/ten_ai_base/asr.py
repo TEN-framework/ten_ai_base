@@ -23,6 +23,7 @@ from .message import (
     VENDOR_METADATA_KEY,
 )
 from .connection_status import ConnectionStatusMachine, ConnectionStatusTransition
+from .features import send_provide_features
 from .timeline import AudioTimeline
 from .utils import redact_json
 from .const import (
@@ -135,6 +136,11 @@ class AsyncASRBaseExtension(AsyncExtension):
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
+
+        await send_provide_features(
+            ten_env,
+            {"asr.vendor": self.vendor()},
+        )
 
         # Create a task to send audio actual send metrics
         self.audio_actual_send_metrics_task = asyncio.create_task(

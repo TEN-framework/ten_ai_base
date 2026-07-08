@@ -45,8 +45,10 @@ from .message import (
     ModuleType,
     ErrorMessage,
     MetricsMessage,
+    ProvideFeaturesPayload,
     VENDOR_METADATA_KEY,
 )
+from .features import send_provide_features
 from .dumper import Dumper
 from .reconnect_manager import ReconnectManager
 from .connection_status import ConnectionStatusMachine, ConnectionStatusTransition
@@ -101,7 +103,9 @@ __all__ = [
     "ModuleType",
     "ErrorMessage",
     "MetricsMessage",
+    "ProvideFeaturesPayload",
     "VENDOR_METADATA_KEY",
+    "send_provide_features",
     "Dumper",
     "ReconnectManager",
     "ConnectionStatusMachine",

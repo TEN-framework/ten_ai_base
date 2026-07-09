@@ -357,7 +357,7 @@ def test_connection_status_events_are_sent_by_base():
 
     _run(extension.on_connecting())
     _run(extension.on_connected())
-    _run(extension.on_disconnected(code="3001", message="websocket closed"))
+    _run(extension.on_disconnected(code=3001, message="websocket closed"))
 
     assert extension.connection_status == ModuleConnectionStatus.DISCONNECTED
     assert [data.name for data in extension.ten_env.sent_data] == [
@@ -378,7 +378,11 @@ def test_connection_status_events_are_sent_by_base():
         "key": mask_secret("sk-test-secret-1234"),
         "url": "wss://tts.example",
     }
-    assert payloads[2]["vendor"] == "test_vendor"
+    assert payloads[2]["vendor_info"] == {
+        "vendor": "test_vendor",
+        "code": "",
+        "message": "",
+    }
 
 
 def test_vendor_metadata_is_added_to_metrics_and_errors():

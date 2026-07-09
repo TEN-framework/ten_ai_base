@@ -17,6 +17,7 @@ from .message import (
     ModuleConnectionStatus,
     ModuleConnectionStatusChanged,
     ModuleError,
+    ModuleErrorVendorInfo,
     ModuleMetricKey,
     ModuleMetrics,
     ModuleType,
@@ -191,7 +192,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         # send laster time before stop
         await self.send_usage_metrics()
-        await self.on_disconnected(code="0", message="stopped")
+        await self.on_disconnected(code=0, message="stopped")
         await super().on_stop(ten_env)
         await self._flush_input_items()
         if self.loop_task:
@@ -678,8 +679,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self,
         current: ModuleConnectionStatus,
         *,
-        code: str = "0",
+        code: int = 0,
         message: str = "",
+        vendor_info: ModuleErrorVendorInfo | None = None,
     ) -> None:
         last = self._connection_status
         if last == current:
@@ -689,20 +691,19 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         event = ModuleConnectionStatusChanged(
             id=self._active_connection_event_id(),
             module=ModuleType.TTS,
+            vendor_info=vendor_info or ModuleErrorVendorInfo(vendor=self.vendor()),
             current=current,
             last=last,
             code=code,
             message=message,
             metadata=self.update_metadata(self._active_request_id(), None),
         )
-        event_payload = event.model_dump(mode="json", exclude_none=True)
-        event_payload["vendor"] = self.vendor()
 
         data = Data.create(DATA_OUT_CONNECTION_STATUS_CHANGED)
-        data.set_property_from_json(None, json.dumps(event_payload))
+        data.set_property_from_json(None, event.model_dump_json())
         await self.ten_env.send_data(data)
         self.ten_env.log_info(
-            f"tts_connection_status_changed: {event_payload}",
+            f"tts_connection_status_changed: {event.model_dump(mode='json')}",
             category=LOG_CATEGORY_KEY_POINT,
         )
 
@@ -735,7 +736,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """
         await self._transition_connection_status(
             ModuleConnectionStatus.CONNECTING,
-            code="0",
+            code=0,
             message="connecting",
         )
 
@@ -746,13 +747,17 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """
         await self._transition_connection_status(
             ModuleConnectionStatus.CONNECTED,
-            code="0",
+            code=0,
             message="connected",
         )
 
     @final
     async def on_disconnected(
-        self, *, code: str = "0", message: str = "closed"
+        self,
+        *,
+        code: int = 0,
+        message: str = "closed",
+        vendor_info: ModuleErrorVendorInfo | None = None,
     ) -> None:
         """
         Notify the base class that the vendor connection is closed.
@@ -761,6 +766,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             ModuleConnectionStatus.DISCONNECTED,
             code=code,
             message=message,
+            vendor_info=vendor_info,
         )
 
     async def finish_request(

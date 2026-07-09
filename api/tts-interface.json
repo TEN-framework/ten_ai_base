@@ -181,8 +181,19 @@
                     "module": {
                         "type": "string"
                     },
-                    "vendor": {
-                        "type": "string"
+                    "vendor_info": {
+                        "type": "object",
+                        "properties": {
+                            "vendor": {
+                                "type": "string"
+                            },
+                            "code": {
+                                "type": "string"
+                            },
+                            "message": {
+                                "type": "string"
+                            }
+                        }
                     },
                     "current": {
                         "type": "string"
@@ -212,13 +223,7 @@
                         }
                     }
                 }
-            },
-            "required": [
-                "module",
-                "vendor",
-                "current",
-                "last"
-            ]
+            }
         },
         {
             "name": "tts_audio_start",

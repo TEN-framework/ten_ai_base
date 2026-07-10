@@ -1,7 +1,7 @@
 {
   "type": "system",
   "name": "ten_ai_base",
-  "version": "0.7.51",
+  "version": "0.7.52",
   "package": {
     "include": [
       "manifest.json",

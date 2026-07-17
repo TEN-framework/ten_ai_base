@@ -496,6 +496,26 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         data.set_property_from_json("", t.model_dump_json())
         await self.ten_env.send_data(data)
 
+    def _cache_stamp_ttfb_metadata(
+        self, extra_metadata: dict | None
+    ) -> dict | None:
+        """Stamp tts_cache_hit onto TTFB metric metadata (three states).
+
+        - read cache active and request served from cache -> True (the replay
+          path passes it explicitly)
+        - read cache active but this request went to the vendor -> False
+        - cache not enabled -> key absent entirely
+        """
+        if (
+            self._cache is None
+            or self._cache_config is None
+            or not self._cache_config.enable_cache_read
+        ):
+            return extra_metadata
+        merged = dict(extra_metadata or {})
+        merged.setdefault("tts_cache_hit", False)
+        return merged
+
     async def send_tts_ttfb_metrics(
         self,
         request_id: str,
@@ -503,6 +523,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         turn_id: int = -1,
         extra_metadata: dict | None = None,
     ) -> None:
+        extra_metadata = self._cache_stamp_ttfb_metadata(extra_metadata)
         # if there is extra metadata, add it to the basic metadata
         new_metadata = self.update_metadata(request_id, extra_metadata)
 

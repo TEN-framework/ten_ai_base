@@ -71,6 +71,9 @@ class FakeTTSExtension(AsyncTTS2BaseExtension):
         base_ms = int(time.time() * 1000)  # epoch-based words, like minimax
 
         await self.send_tts_audio_start(t.request_id)
+        # Real vendor extensions report TTFB on the first audio chunk; the
+        # base class stamps tts_cache_hit onto it when the read cache is on.
+        await self.send_tts_ttfb_metrics(t.request_id, 42)
         await self.send_tts_audio_data(audio)
         words = [
             TTSWord(word=ch, start_ms=base_ms + i * 50, duration_ms=50)
@@ -347,6 +350,61 @@ async def test_multi_chunk_request_bypasses_cache_read():
         await h.send_text("r2", "世界", end=True)
         await h.wait_audio_end()
         assert h.ext.vendor_calls == 2  # both chunks went to the vendor
+
+
+@pytest.mark.asyncio
+def _ttfb_metrics(h: ExtensionHarness) -> list[dict]:
+    return [m for m in h.data_of("metrics") if "ttfb" in m.get("metrics", {})]
+
+
+@pytest.mark.asyncio
+async def test_ttfb_metric_marks_cache_miss_when_read_enabled():
+    """Read cache on + vendor served the request -> tts_cache_hit: false."""
+    client = FakeRedisClient()
+    async with ExtensionHarness(cache_config(read=True), client) as h:
+        await h.send_text("r1", "uncached text", end=True)
+        await h.wait_audio_end()
+        ttfb = _ttfb_metrics(h)
+        assert ttfb
+        assert all(m["metadata"]["tts_cache_hit"] is False for m in ttfb)
+
+
+@pytest.mark.asyncio
+async def test_ttfb_metric_marks_cache_hit_true():
+    """Read cache on + served from cache -> tts_cache_hit: true."""
+    client = FakeRedisClient()
+    await prime_cache(client, "你好,世界")
+    async with ExtensionHarness(cache_config(read=True), client) as h:
+        await h.send_text("r2", "你好,世界", end=True)
+        await h.wait_audio_end()
+        ttfb = _ttfb_metrics(h)
+        assert ttfb
+        assert all(m["metadata"]["tts_cache_hit"] is True for m in ttfb)
+
+
+@pytest.mark.asyncio
+async def test_ttfb_metric_has_no_cache_flag_when_cache_disabled():
+    """Cache not configured -> the key must be absent entirely."""
+    async with ExtensionHarness(None) as h:
+        await h.send_text("r1", "hello", end=True)
+        await h.wait_audio_end()
+        ttfb = _ttfb_metrics(h)
+        assert ttfb
+        for m in ttfb:
+            assert "tts_cache_hit" not in m.get("metadata", {})
+
+
+@pytest.mark.asyncio
+async def test_ttfb_metric_has_no_cache_flag_in_write_only_mode():
+    """Write-only mode never reads, so hit/miss is meaningless -> key absent."""
+    client = FakeRedisClient()
+    async with ExtensionHarness(cache_config(write=True), client) as h:
+        await h.send_text("r1", "hello", end=True)
+        await h.wait_audio_end()
+        ttfb = _ttfb_metrics(h)
+        assert ttfb
+        for m in ttfb:
+            assert "tts_cache_hit" not in m.get("metadata", {})
 
 
 @pytest.mark.asyncio

@@ -7,11 +7,19 @@ from abc import ABC, abstractmethod
 import asyncio
 from enum import Enum
 import json
+import time
 import traceback
 from typing import final
 import uuid
 
 from .helper import AsyncQueue
+from .tts2_cache import (
+    TTS2CacheConfig,
+    TTSCacheEntry,
+    TTSCacheRecorder,
+    TTSRedisCache,
+    build_tts_cache_key,
+)
 from .features import send_provide_features
 from .message import (
     ModuleConnectionStatus,
@@ -112,6 +120,13 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # Set in send_tts_audio_start(), reset in send_tts_audio_end() and flush
         # Used by send_tts_audio_data() to attach correct metadata to audio frames
         self.current_audio_request_id = None
+
+        # Redis-backed result cache (see tts2_cache.py). Only active when the
+        # extension property JSON enables it; recorders double as per-request
+        # first-chunk trackers for the cache read path.
+        self._cache_config: TTS2CacheConfig | None = None
+        self._cache: TTSRedisCache | None = None
+        self._cache_recorders: dict[str, TTSCacheRecorder] = {}
         self._connection_status = ModuleConnectionStatus.DISCONNECTED
         self._connection_lock = asyncio.Lock()
 
@@ -170,6 +185,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 self.request_states.pop(req_id, None)
                 # Metadata should already be cleaned up, but defensive cleanup
                 self.metadatas.pop(req_id, None)
+                self._cache_recorders.pop(req_id, None)
 
             self.ten_env.log_debug(
                 f"Cleaned up {len(completed_ids)} COMPLETED states: {completed_ids}"
@@ -185,6 +201,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             ten_env,
             {"tts.vendor": self.vendor()},
         )
+        await self._load_cache_config(ten_env)
         if self.loop_task is None:
             self.loop = asyncio.get_event_loop()
             self.loop_task = self.loop.create_task(self._process_input_queue(ten_env))
@@ -198,6 +215,11 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         if self.loop_task:
             self.loop_task.cancel()
         await self.input_queue.put(None)  # Signal the loop to stop processing
+        if self._cache:
+            try:
+                await self._cache.close()
+            except Exception as e:
+                ten_env.log_warn(f"tts_cache: failed to close redis client: {e}")
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(ten_env)
@@ -341,6 +363,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         # This handles both the current request and any queued requests
         self.request_states.clear()
         self.metadatas.clear()
+        self._cache_recorders.clear()
 
         # Reset processing request ID and current audio request ID
         self._processing_request_id = None
@@ -415,6 +438,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                         t.request_id, RequestState.FINALIZING,
                         "received text_input_end, generating final audio"
                     )
+                if await self._maybe_serve_tts_from_cache(t):
+                    continue
+                self._cache_record_input(t)
                 await self.request_tts(t)
 
             except asyncio.CancelledError:
@@ -427,6 +453,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def send_tts_audio_data(self, audio_data: bytes, timestamp: int = 0) -> None:
         """End sending audio out."""
         try:
+            self._cache_record_audio(audio_data)
             sample_rate = self.synthesize_audio_sample_rate()
             bytes_per_sample = self.synthesize_audio_sample_width()
             number_of_channels = self.synthesize_audio_channels()
@@ -464,6 +491,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             self.ten_env.log_error(f"error send audio frame, {traceback.format_exc()}")
 
     async def send_tts_text_result(self, t: TTSTextResult) -> None:
+        self._cache_record_text_result(t)
         data = Data.create(DATA_TTS_TEXT_RESULT)
         data.set_property_from_json("", t.model_dump_json())
         await self.ten_env.send_data(data)
@@ -522,6 +550,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         reason: TTSAudioEndReason = TTSAudioEndReason.REQUEST_END,
         extra_metadata: dict | None = None,
     ) -> None:
+        self._cache_finalize_request(request_id, reason)
         new_metadata = self.update_metadata(request_id, extra_metadata)
         data = Data.create("tts_audio_end")
         json_data = json.dumps(
@@ -873,6 +902,228 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                                 f"Put buffered message back to queue: request_id={msg.request_id}, "
                                 f"text={msg.text[:50]}..."
                             )
+
+    async def _load_cache_config(self, ten_env: AsyncTenEnv) -> None:
+        """Parse cache switches from the extension property JSON.
+
+        Cache config lives in top-level extension properties so any TTS2
+        extension can enable caching via graph config with no code changes.
+        Failures only disable the cache; they never break extension startup.
+        """
+        try:
+            config_json, err = await ten_env.get_property_to_json("")
+            if err or not config_json:
+                return
+            cache_config = TTS2CacheConfig.model_validate_json(config_json)
+            if not cache_config.cache_enabled:
+                return
+            self._cache_config = cache_config
+            self._cache = TTSRedisCache(cache_config)
+            ten_env.log_info(
+                f"tts_cache enabled: read={cache_config.enable_cache_read}, "
+                f"write={cache_config.enable_cache_write}, "
+                f"prefix={cache_config.cache_key_prefix}, "
+                f"ttl={cache_config.cache_ttl_seconds}s",
+                category=LOG_CATEGORY_KEY_POINT,
+            )
+        except Exception as e:
+            self._cache_config = None
+            self._cache = None
+            ten_env.log_warn(f"tts_cache: invalid cache config, disabled: {e}")
+
+    def cache_key_params(self) -> dict:
+        """
+        Vendor params that affect the synthesized audio (voice, model, ...),
+        merged into the hash(params) part of the cache key. Override in
+        subclasses; operators can also inject params via the
+        `cache_key_params` config field without code changes.
+        """
+        return {}
+
+    def _build_tts_cache_key(self, text: str) -> str:
+        assert self._cache_config is not None
+        params: dict = {
+            "sample_rate": self.synthesize_audio_sample_rate(),
+            "channels": self.synthesize_audio_channels(),
+            "sample_width": self.synthesize_audio_sample_width(),
+        }
+        params.update(self._cache_config.cache_key_params)
+        params.update(self.cache_key_params())
+        return build_tts_cache_key(
+            self._cache_config.cache_key_prefix, self.vendor(), params, text
+        )
+
+    def _cache_record_input(self, t: TTSTextInput) -> None:
+        """Track request text for the cache; also marks the request as seen
+        so the read path only triggers on the first message of a request."""
+        if self._cache is None:
+            return
+        recorder = self._cache_recorders.get(t.request_id)
+        if recorder is None:
+            recorder = TTSCacheRecorder(t.request_id)
+            self._cache_recorders[t.request_id] = recorder
+        recorder.add_text(t.text, t.text_input_end)
+
+    def _cache_record_audio(self, audio_data: bytes) -> None:
+        if not self._cache_config or not self._cache_config.enable_cache_write:
+            return
+        recorder = self._cache_recorders.get(self.current_audio_request_id)
+        if recorder:
+            recorder.add_audio(audio_data)
+
+    def _cache_record_text_result(self, t: TTSTextResult) -> None:
+        if not self._cache_config or not self._cache_config.enable_cache_write:
+            return
+        recorder = self._cache_recorders.get(t.request_id)
+        if recorder:
+            recorder.add_text_result(t)
+
+    def _cache_finalize_request(
+        self, request_id: str, reason: TTSAudioEndReason
+    ) -> None:
+        """Consume the request recorder; write to Redis only on clean end."""
+        recorder = self._cache_recorders.pop(request_id, None)
+        if (
+            recorder is None
+            or self._cache is None
+            or self._cache_config is None
+            or not self._cache_config.enable_cache_write
+            or reason != TTSAudioEndReason.REQUEST_END
+        ):
+            return
+        entry = recorder.to_entry(
+            self.synthesize_audio_sample_rate(),
+            self.synthesize_audio_channels(),
+            self.synthesize_audio_sample_width(),
+        )
+        if entry is None:
+            return
+        key = self._build_tts_cache_key(entry.text)
+        # Fire-and-forget: a cache write must never block the audio path.
+        asyncio.create_task(self._cache_put_safe(key, entry))
+
+    async def _cache_put_safe(self, key: str, entry: TTSCacheEntry) -> None:
+        assert self._cache is not None
+        try:
+            await self._cache.put(key, entry)
+            self.ten_env.log_info(
+                f"tts_cache: stored {len(entry.audio)} audio bytes, "
+                f"{len(entry.words)} words for key {key}",
+                category=LOG_CATEGORY_KEY_POINT,
+            )
+        except Exception as e:
+            self.ten_env.log_warn(f"tts_cache: write failed for key {key}: {e}")
+
+    async def _maybe_serve_tts_from_cache(self, t: TTSTextInput) -> bool:
+        """Serve a request from Redis when possible.
+
+        Only single-shot requests (first message already carrying
+        text_input_end) are eligible: for multi-chunk streaming requests the
+        full content hash is unknown until the end, and buffering chunks
+        would ruin TTFB on a cache miss. Returns True when the request was
+        fully served (request_tts must not be called).
+        """
+        if (
+            self._cache is None
+            or self._cache_config is None
+            or not self._cache_config.enable_cache_read
+            or t.request_id in self._cache_recorders
+            or not t.text_input_end
+            or not t.text
+        ):
+            return False
+
+        key = self._build_tts_cache_key(t.text)
+        lookup_start = time.time()
+        try:
+            entry = await self._cache.get(key)
+        except Exception as e:
+            self.ten_env.log_warn(f"tts_cache: read failed for key {key}: {e}")
+            return False
+        if entry is None:
+            return False
+        if (
+            entry.sample_rate != self.synthesize_audio_sample_rate()
+            or entry.channels != self.synthesize_audio_channels()
+            or entry.sample_width != self.synthesize_audio_sample_width()
+        ):
+            return False
+        lookup_ms = int((time.time() - lookup_start) * 1000)
+
+        self.ten_env.log_info(
+            f"tts_cache: hit for request {t.request_id}, key {key}, "
+            f"{len(entry.audio)} audio bytes, {len(entry.words)} words",
+            category=LOG_CATEGORY_KEY_POINT,
+        )
+        # Run the replay as current_task so the existing flush machinery
+        # (_cancel_current_task) can interrupt it like a vendor request.
+        task = asyncio.create_task(self._replay_cached_tts(t, entry, lookup_ms))
+        self.current_task = task
+        try:
+            await task
+        finally:
+            if self.current_task is task:
+                self.current_task = None
+        return True
+
+    async def _replay_cached_tts(
+        self, t: TTSTextInput, entry: TTSCacheEntry, lookup_ms: int
+    ) -> None:
+        request_id = t.request_id
+        replay_start = time.time()
+        sent_bytes = 0
+        bytes_per_second = entry.sample_rate * entry.channels * entry.sample_width
+        try:
+            await self.send_tts_audio_start(request_id)
+            await self.send_tts_ttfb_metrics(
+                request_id, lookup_ms, extra_metadata={"tts_cache_hit": True}
+            )
+            if entry.has_text_result:
+                base_ms = entry.replay_base_ms()
+                await self.send_tts_text_result(
+                    TTSTextResult(
+                        request_id=request_id,
+                        text=entry.text,
+                        start_ms=base_ms,
+                        duration_ms=entry.duration_ms,
+                        words=entry.rebased_words(base_ms),
+                        text_result_end=True,
+                        metadata=self.metadatas.get(request_id, {}),
+                    )
+                )
+            frame_size = entry.channels * entry.sample_width
+            chunk_size = max(int(bytes_per_second * 0.2), frame_size)
+            chunk_size -= chunk_size % frame_size
+            for offset in range(0, len(entry.audio), chunk_size):
+                chunk = entry.audio[offset : offset + chunk_size]
+                await self.send_tts_audio_data(chunk)
+                sent_bytes += len(chunk)
+                # Yield so flush/cancel can interleave with the replay.
+                await asyncio.sleep(0)
+            interval_ms = int((time.time() - replay_start) * 1000)
+            await self.send_tts_audio_end(
+                request_id,
+                request_event_interval_ms=interval_ms,
+                request_total_audio_duration_ms=entry.duration_ms,
+                reason=TTSAudioEndReason.REQUEST_END,
+            )
+            await self.finish_request(request_id)
+        except asyncio.CancelledError:
+            # Mirror the cancel_tts contract: an interrupted request must
+            # still emit audio_end with reason=INTERRUPTED.
+            interval_ms = int((time.time() - replay_start) * 1000)
+            played_ms = (
+                int(sent_bytes * 1000 / bytes_per_second)
+                if bytes_per_second > 0
+                else 0
+            )
+            await self.send_tts_audio_end(
+                request_id,
+                request_event_interval_ms=interval_ms,
+                request_total_audio_duration_ms=played_ms,
+                reason=TTSAudioEndReason.INTERRUPTED,
+            )
+            raise
 
     @abstractmethod
     def vendor(self) -> str:

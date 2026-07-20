@@ -48,6 +48,7 @@ def test_mask_secret_supports_modes():
 def test_default_key_sets_include_expected_items():
     assert "authorization" in DEFAULT_HEADER_KEYS
     assert "x-api-key" in DEFAULT_HEADER_KEYS
+    assert "privatekey" in DEFAULT_JSON_KEYS
     assert "secretkey" in DEFAULT_JSON_KEYS
     assert "x-api-key" in DEFAULT_JSON_KEYS
     assert DEFAULT_HEADER_KEYS <= DEFAULT_JSON_KEYS

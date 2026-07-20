@@ -18,6 +18,7 @@ DEFAULT_JSON_KEYS = frozenset(
         "appkey",
         "authorization",
         "key",
+        "privatekey",
         "secret",
         "secretid",
         "secretkey",

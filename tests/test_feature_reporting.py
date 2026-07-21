@@ -11,7 +11,10 @@ import json
 import sys
 import types
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 def _create_fake_ten_runtime_modules() -> dict[str, types.ModuleType]:
@@ -228,8 +231,15 @@ async def _cancel_task(task: asyncio.Task | None) -> None:
 
 
 class _FeatureASRExtension(AsyncASRBaseExtension):
+    def __init__(self, name: str, vendor_metadata: dict[str, Any] | None = None):
+        super().__init__(name)
+        self._vendor_metadata = vendor_metadata or {}
+
     def vendor(self) -> str:
         return "feature-asr"
+
+    def vendor_metadata(self) -> dict[str, Any]:
+        return self._vendor_metadata
 
     async def start_connection(self) -> None:
         return None
@@ -287,7 +297,52 @@ def test_asr_on_start_reports_vendor_feature():
 
 async def async_test_asr_on_start_reports_vendor_feature():
     sent_data: list[tuple[str, dict]] = []
-    ext = _FeatureASRExtension("feature-asr")
+    ext = _FeatureASRExtension(
+        "feature-asr",
+        {"model": "feature-model", "region": "us"},
+    )
+    ext.ten_env = _make_mock_ten_env(sent_data)
+    ext.auto_connect = False
+
+    try:
+        await ext.on_start(ext.ten_env)
+        assert sent_data[0] == (
+            DATA_OUT_PROVIDE_FEATURES,
+            {
+                "features": {
+                    "asr.vendor": "feature-asr",
+                    "asr.model": "feature-model",
+                }
+            },
+        )
+    finally:
+        await _cancel_task(ext.audio_actual_send_metrics_task)
+
+
+@pytest.mark.parametrize(
+    "vendor_metadata",
+    [
+        {},
+        {"model": ""},
+        {"model": None},
+        {"model": 123},
+    ],
+)
+def test_asr_on_start_omits_unavailable_model_feature(
+    vendor_metadata: dict[str, Any],
+):
+    asyncio.run(
+        async_test_asr_on_start_omits_unavailable_model_feature(
+            vendor_metadata,
+        )
+    )
+
+
+async def async_test_asr_on_start_omits_unavailable_model_feature(
+    vendor_metadata: dict[str, Any],
+):
+    sent_data: list[tuple[str, dict]] = []
+    ext = _FeatureASRExtension("feature-asr", vendor_metadata)
     ext.ten_env = _make_mock_ten_env(sent_data)
     ext.auto_connect = False
 

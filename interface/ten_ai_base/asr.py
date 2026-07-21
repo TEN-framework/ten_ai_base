@@ -137,9 +137,14 @@ class AsyncASRBaseExtension(AsyncExtension):
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
 
+        features = {"asr.vendor": self.vendor()}
+        model = self._get_masked_vendor_metadata().get("model")
+        if isinstance(model, str) and model:
+            features["asr.model"] = model
+
         await send_provide_features(
             ten_env,
-            {"asr.vendor": self.vendor()},
+            features,
         )
 
         # Create a task to send audio actual send metrics

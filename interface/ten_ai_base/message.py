@@ -36,8 +36,6 @@ class ModuleMetricKey(str, Enum):
     RESPONSE_TIME_MS = "response_time_ms"   # inbound response timestamp in ms
     REQUEST_BYTES = "request_bytes"   # outbound request payload size in bytes
     RESPONSE_BYTES = "response_bytes"   # inbound response payload size in bytes
-    AVATAR_RECV_AUDIO_DURATION = "recv_audio_duration"
-    AVATAR_TOTAL_RECV_AUDIO_DURATION = "total_recv_audio_duration"
 
 
 class ModuleConnectionStatus(str, Enum):

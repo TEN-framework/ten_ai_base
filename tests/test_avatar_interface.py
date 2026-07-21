@@ -1,18 +1,8 @@
-import importlib.util
 import json
 from pathlib import Path
 
 
 _ROOT = Path(__file__).parents[1]
-
-
-def _module_metric_key():
-    message_path = _ROOT / "interface" / "ten_ai_base" / "message.py"
-    spec = importlib.util.spec_from_file_location("ten_ai_base_message", message_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.ModuleMetricKey
 
 
 def _avatar_interface() -> dict:
@@ -49,10 +39,3 @@ def test_avatar_reporting_interface_contract() -> None:
         "message",
         "metadata",
     } <= status_properties.keys()
-
-
-def test_avatar_audio_duration_metric_keys() -> None:
-    metric_keys = {key.value for key in _module_metric_key()}
-
-    assert "recv_audio_duration" in metric_keys
-    assert "total_recv_audio_duration" in metric_keys

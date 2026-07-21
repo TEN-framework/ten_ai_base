@@ -98,6 +98,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.last_finalize_time: float | None = None
 
         self.auto_connect: bool = True
+        self._connection_requested = False
         self._connection_lock = asyncio.Lock()
         self._connection_machine = ConnectionStatusMachine()
 
@@ -611,6 +612,7 @@ class AsyncASRBaseExtension(AsyncExtension):
         """
         Establish connection if not already connected.
         """
+        self._connection_requested = True
         async with self._connection_lock:
             if self._safe_is_connected():
                 if self.ten_env is not None:
@@ -630,7 +632,8 @@ class AsyncASRBaseExtension(AsyncExtension):
             return
 
         if not self._safe_is_connected():
-            ten_env.log_debug("send_frame: service not connected.")
+            if self.auto_connect or self._connection_requested:
+                ten_env.log_debug("send_frame: service not connected.")
             buffer_strategy = self.buffer_strategy()
             if isinstance(buffer_strategy, ASRBufferConfigModeKeep):
                 byte_limit = buffer_strategy.byte_limit

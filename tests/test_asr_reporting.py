@@ -22,7 +22,23 @@ from ten_ai_base import (
     VENDOR_METADATA_KEY,
     mask_secret,
 )
-from ten_ai_base.const import DATA_OUT_CONNECTION_STATUS_CHANGED, DATA_OUT_METRICS
+from ten_ai_base.const import (
+    DATA_IN_TRIGGER_CONNECT,
+    DATA_OUT_CONNECTION_STATUS_CHANGED,
+    DATA_OUT_METRICS,
+)
+from ten_runtime import Data
+
+
+class _AudioFrame:
+    def __init__(self, buf: bytes):
+        self._buf = buf
+
+    def get_buf(self) -> bytes:
+        return self._buf
+
+    def get_property_to_json(self, key):
+        return None, None
 
 
 class _MockASRExtension(AsyncASRBaseExtension):
@@ -178,6 +194,41 @@ async def async_test_error_metadata_includes_vendor_metadata(asr_ext):
     assert len(asr_ext.sent_data) == 1
     metadata = asr_ext.sent_data[0][1]["metadata"]
     assert metadata[VENDOR_METADATA_KEY]["region"] == "cn"
+
+
+def test_audio_frame_not_connected_log_suppressed_before_trigger_connect(asr_ext):
+    asyncio.run(
+        async_test_audio_frame_not_connected_log_suppressed_before_trigger_connect(
+            asr_ext
+        )
+    )
+
+
+async def async_test_audio_frame_not_connected_log_suppressed_before_trigger_connect(
+    asr_ext,
+):
+    asr_ext.auto_connect = False
+
+    await asr_ext._handle_audio_frame(asr_ext.ten_env, _AudioFrame(b"\x00\x01"))
+
+    asr_ext.ten_env.log_debug.assert_not_called()
+
+
+def test_audio_frame_not_connected_log_after_trigger_connect(asr_ext):
+    asyncio.run(async_test_audio_frame_not_connected_log_after_trigger_connect(asr_ext))
+
+
+async def async_test_audio_frame_not_connected_log_after_trigger_connect(asr_ext):
+    asr_ext.auto_connect = False
+
+    await asr_ext.on_data(asr_ext.ten_env, Data.create(DATA_IN_TRIGGER_CONNECT))
+    asr_ext.ten_env.log_debug.reset_mock()
+
+    await asr_ext._handle_audio_frame(asr_ext.ten_env, _AudioFrame(b"\x00\x01"))
+
+    asr_ext.ten_env.log_debug.assert_called_once_with(
+        "send_frame: service not connected."
+    )
 
 
 class _MinimalASRExtension(AsyncASRBaseExtension):

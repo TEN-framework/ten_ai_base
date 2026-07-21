@@ -51,13 +51,6 @@ def test_avatar_reporting_interface_contract() -> None:
     } <= status_properties.keys()
 
 
-def test_avatar_audio_frame_accepts_upstream_vendor_metadata() -> None:
-    pcm_frame = _avatar_interface()["audio_frame_in"][0]
-    metadata = pcm_frame["property"]["properties"]["metadata"]["properties"]
-
-    assert metadata["vendor_metadata"] == {"type": "object", "properties": {}}
-
-
 def test_avatar_audio_duration_metric_keys() -> None:
     metric_keys = {key.value for key in _module_metric_key()}
 

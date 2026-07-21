@@ -33,10 +33,6 @@
               },
               "turn_id": {
                 "type": "int64"
-              },
-              "vendor_metadata": {
-                "type": "object",
-                "properties": {}
               }
             }
           }

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -16,6 +17,7 @@ var DefaultJSONKeys = append(
 		"appkey",
 		"authorization",
 		"key",
+		"password",
 		"secret",
 		"secretid",
 		"secretkey",
@@ -25,6 +27,14 @@ var DefaultJSONKeys = append(
 		"vendorsecret",
 	},
 	DefaultHeaderKeys...,
+)
+
+var DefaultURLKeys = append(
+	[]string{
+		"sign",
+		"signature",
+	},
+	DefaultJSONKeys...,
 )
 
 func maskDefault(value string) string {
@@ -81,6 +91,60 @@ func RedactHeaders(headers map[string]string, headerKeys ...[]string) map[string
 		redacted[key] = value
 	}
 	return redacted
+}
+
+func RedactURL(rawURL string, urlKeys ...[]string) string {
+	if rawURL == "" {
+		return rawURL
+	}
+
+	queryStart := strings.Index(rawURL, "?")
+	if queryStart < 0 {
+		return rawURL
+	}
+
+	var effectiveURLKeys []string
+	if len(urlKeys) > 0 {
+		effectiveURLKeys = urlKeys[0]
+	}
+	if effectiveURLKeys == nil {
+		effectiveURLKeys = DefaultURLKeys
+	}
+
+	normalizedURLKeys := normalizedJSONKeys(effectiveURLKeys)
+	prefix := rawURL[:queryStart+1]
+	queryAndFragment := rawURL[queryStart+1:]
+	fragment := ""
+	if fragmentStart := strings.Index(queryAndFragment, "#"); fragmentStart >= 0 {
+		fragment = queryAndFragment[fragmentStart:]
+		queryAndFragment = queryAndFragment[:fragmentStart]
+	}
+
+	if queryAndFragment == "" {
+		return rawURL
+	}
+
+	pairs := strings.Split(queryAndFragment, "&")
+	for i, pair := range pairs {
+		if pair == "" {
+			continue
+		}
+
+		key, value, hasValue := strings.Cut(pair, "=")
+		decodedKey, err := url.QueryUnescape(key)
+		if err != nil {
+			decodedKey = key
+		}
+		if !isSensitiveKey(decodedKey, normalizedURLKeys) {
+			continue
+		}
+
+		if hasValue {
+			pairs[i] = key + "=" + MaskSecret(value)
+		}
+	}
+
+	return prefix + strings.Join(pairs, "&") + fragment
 }
 
 func RedactJSON(v any, jsonKeys ...[]string) (any, error) {

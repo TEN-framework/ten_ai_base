@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 from typing import Any, Collection, Mapping
+from urllib.parse import unquote_plus
 
 # Default HTTP header names treated as sensitive by `redact_headers`.
 DEFAULT_HEADER_KEYS = frozenset({"authorization", "api-key", "x-api-key", "xi-api-key"})
@@ -18,6 +19,7 @@ DEFAULT_JSON_KEYS = frozenset(
         "appkey",
         "authorization",
         "key",
+        "password",
         "secret",
         "secretid",
         "secretkey",
@@ -28,6 +30,7 @@ DEFAULT_JSON_KEYS = frozenset(
     }
     | DEFAULT_HEADER_KEYS
 )
+DEFAULT_URL_KEYS = frozenset({"sign", "signature"} | DEFAULT_JSON_KEYS)
 
 
 def _mask_default(value: str) -> str:
@@ -71,6 +74,52 @@ def redact_headers(
         key: mask_secret(value) if key.lower() in effective_header_keys else value
         for key, value in headers.items()
     }
+
+
+def redact_url(
+    url: str,
+    *,
+    url_keys: Collection[str] | None = None,
+) -> str:
+    """Return a copy of a URL with sensitive query parameter values masked."""
+    if not url:
+        return url
+
+    query_start = url.find("?")
+    if query_start < 0:
+        return url
+
+    effective_url_keys = DEFAULT_URL_KEYS if url_keys is None else url_keys
+    normalized_url_keys = _normalized_json_keys(effective_url_keys)
+    prefix = url[: query_start + 1]
+    query_and_fragment = url[query_start + 1 :]
+    fragment = ""
+    fragment_start = query_and_fragment.find("#")
+    if fragment_start >= 0:
+        fragment = query_and_fragment[fragment_start:]
+        query_and_fragment = query_and_fragment[:fragment_start]
+
+    if not query_and_fragment:
+        return url
+
+    pairs = query_and_fragment.split("&")
+    for index, pair in enumerate(pairs):
+        if not pair:
+            continue
+
+        key, has_value, value = pair.partition("=")
+        try:
+            decoded_key = unquote_plus(key)
+        except Exception:
+            decoded_key = key
+
+        if not _is_sensitive_key(decoded_key, normalized_url_keys):
+            continue
+
+        if has_value:
+            pairs[index] = f"{key}={mask_secret(value)}"
+
+    return f"{prefix}{'&'.join(pairs)}{fragment}"
 
 
 def _normalize_key(key: str) -> str:

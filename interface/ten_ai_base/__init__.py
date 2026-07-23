@@ -56,10 +56,12 @@ from .audio_buffer_manager import AudioBufferManager
 from .utils import (
     DEFAULT_HEADER_KEYS,
     DEFAULT_JSON_KEYS,
+    DEFAULT_URL_KEYS,
     encrypt,
     mask_secret,
     redact_headers,
     redact_json,
+    redact_url,
 )
 
 # Specify what should be imported when a user imports * from the
@@ -113,8 +115,10 @@ __all__ = [
     "AudioBufferManager",
     "DEFAULT_JSON_KEYS",
     "DEFAULT_HEADER_KEYS",
+    "DEFAULT_URL_KEYS",
     "encrypt",
     "mask_secret",
     "redact_json",
     "redact_headers",
+    "redact_url",
 ]

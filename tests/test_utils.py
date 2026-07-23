@@ -12,10 +12,12 @@ import pytest
 from ten_ai_base import (
     DEFAULT_HEADER_KEYS,
     DEFAULT_JSON_KEYS,
+    DEFAULT_URL_KEYS,
     encrypt,
     mask_secret,
     redact_headers,
     redact_json,
+    redact_url,
 )
 
 
@@ -49,7 +51,11 @@ def test_default_key_sets_include_expected_items():
     assert "authorization" in DEFAULT_HEADER_KEYS
     assert "x-api-key" in DEFAULT_HEADER_KEYS
     assert "secretkey" in DEFAULT_JSON_KEYS
+    assert "password" in DEFAULT_JSON_KEYS
     assert "x-api-key" in DEFAULT_JSON_KEYS
+    assert "signature" in DEFAULT_URL_KEYS
+    assert "secretid" in DEFAULT_URL_KEYS
+    assert "password" in DEFAULT_URL_KEYS
     assert DEFAULT_HEADER_KEYS <= DEFAULT_JSON_KEYS
 
 
@@ -241,3 +247,63 @@ def test_redact_headers_keeps_empty_collections_as_empty_rules(empty_collection)
 
     assert sanitized["Authorization"] == "Bearer abcdef123456"
     assert sanitized["normal"] == "visible"
+
+
+def test_redact_url_masks_sensitive_query_values():
+    url = (
+        "wss://asr.cloud.tencent.com/asr/v2/1259678631"
+        "?engine_model_type=16k_zh"
+        "&secretid=AKIDabcdef123456"
+        "&signature=abcdef%3D%3D"
+        "&voice_id=visible#frag"
+    )
+
+    sanitized = redact_url(url)
+
+    assert sanitized == (
+        "wss://asr.cloud.tencent.com/asr/v2/1259678631"
+        "?engine_model_type=16k_zh"
+        f"&secretid={mask_secret('AKIDabcdef123456')}"
+        f"&signature={mask_secret('abcdef%3D%3D')}"
+        "&voice_id=visible#frag"
+    )
+
+
+def test_redact_url_uses_default_keys_when_omitted():
+    sanitized = redact_url(
+        "https://example.com/path?signature=abcdef123456&normal=visible"
+    )
+
+    assert sanitized == (
+        "https://example.com/path"
+        f"?signature={mask_secret('abcdef123456')}&normal=visible"
+    )
+
+
+def test_redact_url_key_boundaries():
+    url = (
+        "https://example.com/path"
+        "?signature=default-123456&custom_flag=custom-123456&normal=visible"
+    )
+
+    omitted = redact_url(url)
+    assert omitted == (
+        "https://example.com/path"
+        f"?signature={mask_secret('default-123456')}"
+        "&custom_flag=custom-123456&normal=visible"
+    )
+
+    single = redact_url(url, url_keys={"custom_flag"})
+    assert single == (
+        "https://example.com/path"
+        "?signature=default-123456"
+        f"&custom_flag={mask_secret('custom-123456')}&normal=visible"
+    )
+
+    empty = redact_url(url, url_keys=set())
+    assert empty == url
+
+
+def test_redact_url_keeps_url_without_query():
+    url = "wss://asr.cloud.tencent.com/asr/v2/1259678631"
+    assert redact_url(url) == url

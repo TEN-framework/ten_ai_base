@@ -87,14 +87,91 @@ func TestDefaultKeys(t *testing.T) {
 	if _, ok := jsonKeySet["secretkey"]; !ok {
 		t.Fatal("secretkey should be in DefaultJSONKeys")
 	}
+	if _, ok := jsonKeySet["password"]; !ok {
+		t.Fatal("password should be in DefaultJSONKeys")
+	}
 	if _, ok := jsonKeySet["x-api-key"]; !ok {
 		t.Fatal("x-api-key should be in DefaultJSONKeys")
+	}
+
+	urlKeySet := make(map[string]struct{}, len(ten_ai_base.DefaultURLKeys))
+	for _, key := range ten_ai_base.DefaultURLKeys {
+		urlKeySet[key] = struct{}{}
+	}
+	if _, ok := urlKeySet["signature"]; !ok {
+		t.Fatal("signature should be in DefaultURLKeys")
+	}
+	if _, ok := urlKeySet["secretid"]; !ok {
+		t.Fatal("secretid should be in DefaultURLKeys")
+	}
+	if _, ok := urlKeySet["password"]; !ok {
+		t.Fatal("password should be in DefaultURLKeys")
 	}
 
 	for _, headerKey := range ten_ai_base.DefaultHeaderKeys {
 		if _, ok := jsonKeySet[headerKey]; !ok {
 			t.Fatalf("DefaultJSONKeys missing header key %q", headerKey)
 		}
+	}
+}
+
+func TestRedactURL(t *testing.T) {
+	rawURL := "wss://asr.cloud.tencent.com/asr/v2/1259678631?engine_model_type=16k_zh&secretid=AKIDabcdef123456&signature=abcdef%3D%3D&voice_id=visible#frag"
+
+	got := ten_ai_base.RedactURL(rawURL)
+
+	want := "wss://asr.cloud.tencent.com/asr/v2/1259678631?engine_model_type=16k_zh&secretid=" +
+		ten_ai_base.MaskSecret("AKIDabcdef123456") +
+		"&signature=" +
+		ten_ai_base.MaskSecret("abcdef%3D%3D") +
+		"&voice_id=visible#frag"
+	if got != want {
+		t.Fatalf("RedactURL() = %q, want %q", got, want)
+	}
+}
+
+func TestRedactURLUsesDefaultKeysWhenOmitted(t *testing.T) {
+	got := ten_ai_base.RedactURL("https://example.com/path?signature=abcdef123456&normal=visible")
+	want := "https://example.com/path?signature=" + ten_ai_base.MaskSecret("abcdef123456") + "&normal=visible"
+	if got != want {
+		t.Fatalf("RedactURL() = %q, want %q", got, want)
+	}
+}
+
+func TestRedactURLVariadicBoundaries(t *testing.T) {
+	rawURL := "https://example.com/path?signature=default-123456&custom_flag=custom-123456&normal=visible"
+
+	t.Run("omitted uses defaults", func(t *testing.T) {
+		got := ten_ai_base.RedactURL(rawURL)
+		want := "https://example.com/path?signature=" +
+			ten_ai_base.MaskSecret("default-123456") +
+			"&custom_flag=custom-123456&normal=visible"
+		if got != want {
+			t.Fatalf("RedactURL() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("single custom slice", func(t *testing.T) {
+		got := ten_ai_base.RedactURL(rawURL, []string{"custom_flag"})
+		want := "https://example.com/path?signature=default-123456&custom_flag=" +
+			ten_ai_base.MaskSecret("custom-123456") +
+			"&normal=visible"
+		if got != want {
+			t.Fatalf("RedactURL() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("empty slice disables redaction", func(t *testing.T) {
+		if got := ten_ai_base.RedactURL(rawURL, []string{}); got != rawURL {
+			t.Fatalf("RedactURL() = %q, want %q", got, rawURL)
+		}
+	})
+}
+
+func TestRedactURLKeepsURLWithoutQuery(t *testing.T) {
+	rawURL := "wss://asr.cloud.tencent.com/asr/v2/1259678631"
+	if got := ten_ai_base.RedactURL(rawURL); got != rawURL {
+		t.Fatalf("RedactURL() = %q, want %q", got, rawURL)
 	}
 }
 

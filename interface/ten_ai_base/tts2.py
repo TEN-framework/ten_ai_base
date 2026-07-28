@@ -333,6 +333,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             current_state = self.request_states.get(current_id)
 
             if current_state and current_state != RequestState.COMPLETED:
+                await self._finalize_tts_request_reporting(
+                    current_id,
+                    trigger="flush",
+                )
                 self.ten_env.log_info(
                     f"Cancelling current request {current_id} in state {current_state.value}",
                     category=LOG_CATEGORY_KEY_POINT,
@@ -368,9 +372,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """
         Asynchronously process queue items one by one.
 
-        Handles out-of-order messages by buffering messages from different request_ids.
-        Example: If messages arrive as [req3, req3, req4, req4, req3(end)],
-        req4 messages will be buffered until req3 completes.
+        A request_id change is treated as an implicit boundary for the previous
+        request. Normally the boundary is reported by text_input_end or flush;
+        request_id change is a fallback for malformed input sequences.
         """
         while True:
             # Wait for an item to be available in the queue
@@ -378,22 +382,28 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             if t is None:
                 break
 
-            # If we're currently processing a different request, buffer this message
+            # Interleaved request IDs are not part of the input contract. Treat a
+            # changed ID as a fallback end signal so the previous report cannot
+            # remain cached indefinitely.
             if (
                 self._processing_request_id is not None
                 and t.request_id != self._processing_request_id
             ):
-                # Buffer the message for later processing
-                if t.request_id not in self._pending_messages:
-                    self._pending_messages[t.request_id] = []
-                self._pending_messages[t.request_id].append(t)
-
-                ten_env.log_debug(
-                    f"Buffered message for request {t.request_id} (currently processing {self._processing_request_id}), "
-                    f"buffer size: {len(self._pending_messages[t.request_id])}"
+                previous_request_id = self._processing_request_id
+                await self._finalize_tts_request_reporting(
+                    previous_request_id,
+                    trigger=f"request_id changed to {t.request_id}",
                 )
-                continue
-            elif (
+                previous_state = self.request_states.get(previous_request_id)
+                if previous_state and previous_state != RequestState.COMPLETED:
+                    self._transition_state(
+                        previous_request_id,
+                        RequestState.COMPLETED,
+                        f"request_id changed to {t.request_id}",
+                    )
+                self._processing_request_id = None
+
+            if (
                 self._processing_request_id is None
                 and t.request_id not in self._pending_messages
             ):
@@ -434,6 +444,21 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 ten_env.log_error(
                     f"Task failed: {t.text}, err: {traceback.format_exc()}"
                 )
+
+    async def _finalize_tts_request_reporting(
+        self,
+        request_id: str,
+        *,
+        trigger: str,
+    ) -> None:
+        try:
+            await self.send_tts_request_final_marker(request_id)
+        except Exception:
+            self.ten_env.log_error(
+                "Failed to finalize TTS request reporting, "
+                f"request_id: {request_id}, trigger: {trigger}, "
+                f"error: {traceback.format_exc()}",
+            )
 
     async def send_tts_audio_data(self, audio_data: bytes, timestamp: int = 0) -> None:
         """End sending audio out."""

@@ -508,6 +508,69 @@ def test_empty_final_marker_is_sent_before_provider_processing():
     ]
 
 
+def test_request_id_change_finalizes_previous_reporting_before_new_request():
+    class RequestChangeExtension(RecordingHttpExtension):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.events = []
+
+        async def send_tts_request_final_marker(self, request_id: str) -> None:
+            self.events.append(("marker", request_id))
+
+        async def request_tts(self, t: TTSTextInput) -> None:
+            self.events.append(("provider", t.request_id))
+
+    extension = RequestChangeExtension()
+    extension.request_states["previous"] = RequestState.PROCESSING
+    extension.request_states["next"] = RequestState.QUEUED
+    extension._processing_request_id = "previous"
+
+    async def process() -> None:
+        await extension.input_queue.put(
+            TTSTextInput(
+                request_id="next",
+                text="hello",
+                text_input_end=False,
+                metadata={},
+            )
+        )
+        await extension.input_queue.put(None)
+        await extension._process_input_queue(extension.ten_env)
+
+    _run(process())
+
+    assert extension.events == [
+        ("marker", "previous"),
+        ("provider", "next"),
+    ]
+    assert extension.request_states["previous"] == RequestState.COMPLETED
+    assert extension.request_states["next"] == RequestState.PROCESSING
+
+
+def test_flush_finalizes_current_request_reporting_before_cancel():
+    class FlushReportingExtension(RecordingHttpExtension):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.events = []
+
+        async def send_tts_request_final_marker(self, request_id: str) -> None:
+            self.events.append(("marker", request_id))
+
+        async def cancel_tts(self) -> None:
+            self.events.append(("cancel", self._processing_request_id))
+
+    extension = FlushReportingExtension()
+    extension.request_states["current"] = RequestState.PROCESSING
+    extension._processing_request_id = "current"
+
+    _run(extension._flush_input_items())
+
+    assert extension.events == [
+        ("marker", "current"),
+        ("cancel", "current"),
+    ]
+
+
 def test_http_vendor_failure_still_emits_request_metrics():
     extension = RecordingHttpExtension([])
     extension.client = FailingHttpClient([])

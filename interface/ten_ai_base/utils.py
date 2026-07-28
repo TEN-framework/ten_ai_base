@@ -32,10 +32,16 @@ DEFAULT_JSON_KEYS = frozenset(
     | DEFAULT_HEADER_KEYS
 )
 DEFAULT_URL_KEYS = frozenset({"sign", "signature"} | DEFAULT_JSON_KEYS)
+_MASKED_SECRET_PATTERN = re.compile(
+    r"^.{1,5}\.\.\..{1,5}#[0-9a-f]{8}$",
+    re.DOTALL,
+)
 
 
 def _mask_default(value: str) -> str:
     if not value:
+        return value
+    if _MASKED_SECRET_PATTERN.fullmatch(value):
         return value
     step = int(len(value) / 5)
     if step <= 0:

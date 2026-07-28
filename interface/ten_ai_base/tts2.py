@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 import asyncio
 from enum import Enum
 import json
+import time
 import traceback
 from typing import final
 import uuid
@@ -56,6 +57,7 @@ class RequestState(Enum):
     - FINALIZING: All text received (text_input_end=True), generating final audio
     - COMPLETED: Terminal state - request finished (check TTSAudioEndReason for completion reason)
     """
+
     QUEUED = "queued"
     PROCESSING = "processing"
     FINALIZING = "finalizing"
@@ -81,7 +83,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.leftover_bytes = b""
         self.session_id = None
         self.metadatas = {}
-        self._flush_complete_event = asyncio.Event()  # allow get after flush is complete
+        self._flush_complete_event = (
+            asyncio.Event()
+        )  # allow get after flush is complete
         self._flush_complete_event.set()  # Initially allow gets
         self._put_lock = asyncio.Lock()  # Protect put operations from race conditions
 
@@ -132,7 +136,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
         return new_state in valid_transitions.get(current_state, [])
 
-    def _transition_state(self, request_id: str, new_state: RequestState, reason: str = "") -> bool:
+    def _transition_state(
+        self, request_id: str, new_state: RequestState, reason: str = ""
+    ) -> bool:
         """
         Transition request to a new state with validation and logging.
         Returns True if transition succeeded, False otherwise.
@@ -161,7 +167,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         COMPLETED states indefinitely. Flush operation will also clear all states.
         """
         completed_ids = [
-            req_id for req_id, state in self.request_states.items()
+            req_id
+            for req_id, state in self.request_states.items()
             if state == RequestState.COMPLETED
         ]
 
@@ -220,9 +227,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             except Exception as e:
                 ten_env.log_error(f"update_configs failed: {e}")
                 cmd_result = CmdResult.create(StatusCode.ERROR, cmd)
-                cmd_result.set_property_from_json(
-                    "", json.dumps({"message": str(e)})
-                )
+                cmd_result.set_property_from_json("", json.dumps({"message": str(e)}))
                 await ten_env.return_result(cmd_result)
         else:
             cmd_result = CmdResult.create(StatusCode.OK, cmd)
@@ -253,17 +258,19 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             # Use lock to prevent race condition between wait and put
             async with self._put_lock:
                 await self._flush_complete_event.wait()
-                
+
                 # Record QUEUED state after flush check to avoid race condition
                 # This ensures metadata is set atomically with queue put operation
                 if t.request_id not in self.request_states:
                     # Clean up old COMPLETED states to prevent unbounded growth
                     self._cleanup_completed_states()
 
-                    self._transition_state(t.request_id, RequestState.QUEUED, "request received")
+                    self._transition_state(
+                        t.request_id, RequestState.QUEUED, "request received"
+                    )
                     if t.metadata:
                         self.metadatas[t.request_id] = t.metadata
-                
+
                 self.ten_env.log_debug(f"on_data tts_text_input put to queue")
                 await self.input_queue.put(t)
         if data.get_name() == DATA_FLUSH:
@@ -346,8 +353,9 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self._processing_request_id = None
         self.current_audio_request_id = None
 
-        self.ten_env.log_debug("Cleared all request states, metadata, and pending messages after flush")
-
+        self.ten_env.log_debug(
+            "Cleared all request states, metadata, and pending messages after flush"
+        )
 
     async def _cancel_current_task(self) -> None:
         """Called when the TTS request is cancelled."""
@@ -412,9 +420,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             try:
                 if t.text_input_end:
                     self._transition_state(
-                        t.request_id, RequestState.FINALIZING,
-                        "received text_input_end, generating final audio"
+                        t.request_id,
+                        RequestState.FINALIZING,
+                        "received text_input_end, generating final audio",
                     )
+                if t.text_input_end and not t.text:
+                    await self.send_tts_request_final_marker(t.request_id)
                 await self.request_tts(t)
 
             except asyncio.CancelledError:
@@ -455,7 +466,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 )
                 f.alloc_buf(len(combined_data))
                 f.set_timestamp(timestamp)
-                f.set_property_from_json("metadata", json.dumps(self.metadatas.get(self.current_audio_request_id, {})))
+                f.set_property_from_json(
+                    "metadata",
+                    json.dumps(self.metadatas.get(self.current_audio_request_id, {})),
+                )
                 buff = f.lock_buf()
                 buff[:] = combined_data
                 f.unlock_buf(buff)
@@ -539,7 +553,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         await self.ten_env.send_data(data)
- 
+
         # Reset current_audio_request_id (audio phase complete)
         if self.current_audio_request_id == request_id:
             self.current_audio_request_id = None
@@ -556,9 +570,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             combined_metadata.update(error.metadata)
         if extra_metadata:
             combined_metadata.update(extra_metadata)
-        new_metadata = self.update_metadata(
-            request_id, combined_metadata or None
-        )
+        new_metadata = self.update_metadata(request_id, combined_metadata or None)
         """
         Send an error message related to TTS processing.
         """
@@ -627,6 +639,55 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         data.set_property_from_json(None, metrics.model_dump_json())
         await self.ten_env.send_data(data)
 
+    async def send_tts_request_metrics(
+        self,
+        request_id: str,
+        output_characters: int,
+        *,
+        request_time_ms: int | None = None,
+        request_final: bool = False,
+        extra_metadata: dict | None = None,
+    ) -> None:
+        metadata = self.update_metadata(request_id, extra_metadata)
+        metadata["request_id"] = request_id
+        metadata["request_final"] = request_final
+        metrics = ModuleMetrics(
+            id=self.get_uuid(),
+            module=ModuleType.TTS,
+            vendor=self.vendor(),
+            metrics={
+                ModuleMetricKey.REQUEST_TIME_MS: (
+                    request_time_ms
+                    if request_time_ms is not None
+                    else int(time.time() * 1000)
+                ),
+                ModuleMetricKey.REQUEST_BYTES: (
+                    output_characters
+                    if isinstance(output_characters, int) and output_characters >= 0
+                    else 0
+                ),
+                ModuleMetricKey.RESPONSE_TIME_MS: 0,
+                ModuleMetricKey.RESPONSE_BYTES: 0,
+            },
+            metadata=metadata,
+        )
+        await self.send_metrics(metrics, request_id)
+
+    async def send_tts_request_final_marker(self, request_id: str) -> None:
+        metadata = self.update_metadata(request_id, None)
+        metadata["request_id"] = request_id
+        metadata["request_final"] = True
+        await self.send_metrics(
+            ModuleMetrics(
+                id=self.get_uuid(),
+                module=ModuleType.TTS,
+                vendor=self.vendor(),
+                metrics={},
+                metadata=metadata,
+            ),
+            request_id,
+        )
+
     async def metrics_calculate_duration(self) -> None:
         self.recv_audio_duration = (
             self.recv_audio_chunks_len
@@ -660,7 +721,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.recv_audio_chunks_len = 0
 
     async def metrics_connect_delay(
-        self, connect_delay_ms: int, extra_metadata: dict | None = None, request_id: str = ""
+        self,
+        connect_delay_ms: int,
+        extra_metadata: dict | None = None,
+        request_id: str = "",
     ):
         new_metadata = self.update_metadata(request_id, extra_metadata)
         metrics = ModuleMetrics(
@@ -917,21 +981,25 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         """
         return uuid.uuid4().hex
 
-    def update_metadata(self, request_id: str| None, metadata: dict | None) -> dict:
+    def update_metadata(self, request_id: str | None, metadata: dict | None) -> dict:
         new_metadata = {}
         if request_id and request_id in self.metadatas:
             new_metadata = self.metadatas.get(request_id).copy()
         if metadata:
             new_metadata.update(metadata)
-        vendor_metadata = redact_json(self.vendor_metadata() or {})
+        vendor_metadata = self.vendor_metadata() or {}
         if vendor_metadata:
             existing_vendor_metadata = new_metadata.get(VENDOR_METADATA_KEY, {})
             if isinstance(existing_vendor_metadata, dict):
                 merged_vendor_metadata = existing_vendor_metadata.copy()
                 merged_vendor_metadata.update(vendor_metadata)
-                new_metadata[VENDOR_METADATA_KEY] = merged_vendor_metadata
+                new_metadata[VENDOR_METADATA_KEY] = redact_json(merged_vendor_metadata)
             else:
-                new_metadata[VENDOR_METADATA_KEY] = vendor_metadata
+                new_metadata[VENDOR_METADATA_KEY] = redact_json(vendor_metadata)
+        elif isinstance(new_metadata.get(VENDOR_METADATA_KEY), dict):
+            new_metadata[VENDOR_METADATA_KEY] = redact_json(
+                new_metadata[VENDOR_METADATA_KEY]
+            )
         return new_metadata
 
     async def cancel_tts(self) -> None:

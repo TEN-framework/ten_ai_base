@@ -26,6 +26,13 @@ def test_mask_secret_masks_long_values():
     assert mask_secret("abcdefghijklmnopqrstuvwxyz") == "abcde...vwxyz#71c480df"
 
 
+def test_mask_secret_does_not_mask_its_own_output_twice():
+    masked = mask_secret("abcdef123456")
+
+    assert mask_secret(masked) == masked
+    assert redact_json({"api_key": masked})["api_key"] == masked
+
+
 def test_mask_secret_keeps_short_values():
     assert mask_secret("") == ""
     assert mask_secret("a") == "a"

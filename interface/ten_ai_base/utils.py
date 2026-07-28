@@ -16,6 +16,7 @@ DEFAULT_JSON_KEYS = frozenset(
     {
         "accesskey",
         "apikey",
+        "api_key",
         "appkey",
         "authorization",
         "key",

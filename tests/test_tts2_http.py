@@ -508,7 +508,7 @@ def test_empty_final_marker_is_sent_before_provider_processing():
     ]
 
 
-def test_request_id_change_finalizes_previous_reporting_before_new_request():
+def test_request_id_change_finalizes_previous_reporting_then_buffers_new_request():
     class RequestChangeExtension(RecordingHttpExtension):
         def __init__(self) -> None:
             super().__init__([])
@@ -539,12 +539,11 @@ def test_request_id_change_finalizes_previous_reporting_before_new_request():
 
     _run(process())
 
-    assert extension.events == [
-        ("marker", "previous"),
-        ("provider", "next"),
-    ]
-    assert extension.request_states["previous"] == RequestState.COMPLETED
-    assert extension.request_states["next"] == RequestState.PROCESSING
+    assert extension.events == [("marker", "previous")]
+    assert extension.request_states["previous"] == RequestState.PROCESSING
+    assert extension.request_states["next"] == RequestState.QUEUED
+    assert extension._processing_request_id == "previous"
+    assert [item.request_id for item in extension._pending_messages["next"]] == ["next"]
 
 
 def test_flush_finalizes_current_request_reporting_before_cancel():

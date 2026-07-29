@@ -977,10 +977,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 new_metadata[VENDOR_METADATA_KEY] = redact_json(merged_vendor_metadata)
             else:
                 new_metadata[VENDOR_METADATA_KEY] = redact_json(vendor_metadata)
-        elif isinstance(new_metadata.get(VENDOR_METADATA_KEY), dict):
-            new_metadata[VENDOR_METADATA_KEY] = redact_json(
-                new_metadata[VENDOR_METADATA_KEY]
-            )
         return new_metadata
 
     async def cancel_tts(self) -> None:

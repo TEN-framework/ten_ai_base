@@ -32,8 +32,21 @@ DEFAULT_JSON_KEYS = frozenset(
     | DEFAULT_HEADER_KEYS
 )
 DEFAULT_URL_KEYS = frozenset({"sign", "signature"} | DEFAULT_JSON_KEYS)
+
+# Keep these constants shared by the formatter and recognizer so the canonical
+# masked format cannot drift between them. The pattern is precompiled because
+# masking is used on reporting hot paths. A plaintext value that exactly matches
+# this canonical format is intentionally treated as already masked.
+_MAX_MASK_VISIBLE_CHARS = 5
+_MASK_FINGERPRINT_HEX_CHARS = 8
+_MIN_MASKED_SECRET_CHARS = 1 + 3 + 1 + 1 + _MASK_FINGERPRINT_HEX_CHARS
+_MAX_MASKED_SECRET_CHARS = (
+    _MAX_MASK_VISIBLE_CHARS * 2 + 3 + 1 + _MASK_FINGERPRINT_HEX_CHARS
+)
 _MASKED_SECRET_PATTERN = re.compile(
-    r"^.{1,5}\.\.\..{1,5}#[0-9a-f]{8}$",
+    rf"^.{{1,{_MAX_MASK_VISIBLE_CHARS}}}\.\.\."
+    rf".{{1,{_MAX_MASK_VISIBLE_CHARS}}}#[0-9a-f]"
+    rf"{{{_MASK_FINGERPRINT_HEX_CHARS}}}$",
     re.DOTALL,
 )
 
@@ -41,14 +54,19 @@ _MASKED_SECRET_PATTERN = re.compile(
 def _mask_default(value: str) -> str:
     if not value:
         return value
-    if _MASKED_SECRET_PATTERN.fullmatch(value):
+    # Avoid regex work for ordinary secrets whose length cannot match the
+    # canonical masked representation.
+    could_be_masked = _MIN_MASKED_SECRET_CHARS <= len(value) <= _MAX_MASKED_SECRET_CHARS
+    if could_be_masked and _MASKED_SECRET_PATTERN.fullmatch(value):
         return value
     step = int(len(value) / 5)
     if step <= 0:
         return value
-    if step > 5:
-        step = 5
-    fingerprint = hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
+    if step > _MAX_MASK_VISIBLE_CHARS:
+        step = _MAX_MASK_VISIBLE_CHARS
+    fingerprint = hashlib.sha256(value.encode("utf-8")).hexdigest()[
+        :_MASK_FINGERPRINT_HEX_CHARS
+    ]
     return f"{value[:step]}...{value[-step:]}#{fingerprint}"
 
 

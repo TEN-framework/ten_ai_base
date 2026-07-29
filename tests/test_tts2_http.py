@@ -458,64 +458,14 @@ def test_http_vendor_attempt_emits_request_metrics():
     assert request_metrics["metrics"]["response_time_ms"] == 0
     assert request_metrics["metrics"]["response_bytes"] == 0
     assert request_metrics["metadata"]["request_id"] == "request-metrics"
-    assert request_metrics["metadata"]["request_final"] is True
+    assert "request_final" not in request_metrics["metadata"]
 
 
-def test_final_marker_has_no_request_metric_values():
-    extension = RecordingHttpExtension([])
-    extension.metadatas["final-marker"] = {"session_id": "session-1"}
-
-    _run(extension.send_tts_request_final_marker("final-marker"))
-
-    payload = _data_payload(extension.ten_env.sent_data[0])
-    assert payload["metrics"] == {}
-    assert payload["metadata"]["request_id"] == "final-marker"
-    assert payload["metadata"]["request_final"] is True
-
-
-def test_empty_final_marker_is_sent_before_provider_processing():
-    class MarkerOrderExtension(RecordingHttpExtension):
-        def __init__(self) -> None:
-            super().__init__([])
-            self.events = []
-
-        async def send_tts_request_final_marker(self, request_id: str) -> None:
-            self.events.append(("marker", request_id))
-
-        async def request_tts(self, t: TTSTextInput) -> None:
-            self.events.append(("provider", t.request_id))
-
-    extension = MarkerOrderExtension()
-    extension.request_states["empty-final"] = RequestState.QUEUED
-
-    async def process() -> None:
-        await extension.input_queue.put(
-            TTSTextInput(
-                request_id="empty-final",
-                text="",
-                text_input_end=True,
-                metadata={},
-            )
-        )
-        await extension.input_queue.put(None)
-        await extension._process_input_queue(extension.ten_env)
-
-    _run(process())
-
-    assert extension.events == [
-        ("marker", "empty-final"),
-        ("provider", "empty-final"),
-    ]
-
-
-def test_request_id_change_finalizes_previous_reporting_then_buffers_new_request():
+def test_request_id_change_preserves_existing_buffering_behavior():
     class RequestChangeExtension(RecordingHttpExtension):
         def __init__(self) -> None:
             super().__init__([])
             self.events = []
-
-        async def send_tts_request_final_marker(self, request_id: str) -> None:
-            self.events.append(("marker", request_id))
 
         async def request_tts(self, t: TTSTextInput) -> None:
             self.events.append(("provider", t.request_id))
@@ -539,21 +489,18 @@ def test_request_id_change_finalizes_previous_reporting_then_buffers_new_request
 
     _run(process())
 
-    assert extension.events == [("marker", "previous")]
+    assert extension.events == []
     assert extension.request_states["previous"] == RequestState.PROCESSING
     assert extension.request_states["next"] == RequestState.QUEUED
     assert extension._processing_request_id == "previous"
     assert [item.request_id for item in extension._pending_messages["next"]] == ["next"]
 
 
-def test_flush_finalizes_current_request_reporting_before_cancel():
+def test_flush_only_cancels_current_tts_request():
     class FlushReportingExtension(RecordingHttpExtension):
         def __init__(self) -> None:
             super().__init__([])
             self.events = []
-
-        async def send_tts_request_final_marker(self, request_id: str) -> None:
-            self.events.append(("marker", request_id))
 
         async def cancel_tts(self) -> None:
             self.events.append(("cancel", self._processing_request_id))
@@ -564,10 +511,7 @@ def test_flush_finalizes_current_request_reporting_before_cancel():
 
     _run(extension._flush_input_items())
 
-    assert extension.events == [
-        ("marker", "current"),
-        ("cancel", "current"),
-    ]
+    assert extension.events == [("cancel", "current")]
 
 
 def test_http_vendor_failure_still_emits_request_metrics():

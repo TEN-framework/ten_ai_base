@@ -333,10 +333,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             current_state = self.request_states.get(current_id)
 
             if current_state and current_state != RequestState.COMPLETED:
-                await self._finalize_tts_request_reporting(
-                    current_id,
-                    trigger="flush",
-                )
                 self.ten_env.log_info(
                     f"Cancelling current request {current_id} in state {current_state.value}",
                     category=LOG_CATEGORY_KEY_POINT,
@@ -382,18 +378,12 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             if t is None:
                 break
 
-            # If we're currently processing a different request, finalize only
-            # the previous request's reporting, then preserve the existing
-            # interleaved-input protection by buffering this message.
+            # If we're currently processing a different request, buffer this message
             if (
                 self._processing_request_id is not None
                 and t.request_id != self._processing_request_id
             ):
-                previous_request_id = self._processing_request_id
-                await self._finalize_tts_request_reporting(
-                    previous_request_id,
-                    trigger=f"request_id changed to {t.request_id}",
-                )
+                # Buffer the message for later processing
                 if t.request_id not in self._pending_messages:
                     self._pending_messages[t.request_id] = []
                 self._pending_messages[t.request_id].append(t)
@@ -434,8 +424,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                         RequestState.FINALIZING,
                         "received text_input_end, generating final audio",
                     )
-                if t.text_input_end and not t.text:
-                    await self.send_tts_request_final_marker(t.request_id)
                 await self.request_tts(t)
 
             except asyncio.CancelledError:
@@ -444,21 +432,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 ten_env.log_error(
                     f"Task failed: {t.text}, err: {traceback.format_exc()}"
                 )
-
-    async def _finalize_tts_request_reporting(
-        self,
-        request_id: str,
-        *,
-        trigger: str,
-    ) -> None:
-        try:
-            await self.send_tts_request_final_marker(request_id)
-        except Exception:
-            self.ten_env.log_error(
-                "Failed to finalize TTS request reporting, "
-                f"request_id: {request_id}, trigger: {trigger}, "
-                f"error: {traceback.format_exc()}",
-            )
 
     async def send_tts_audio_data(self, audio_data: bytes, timestamp: int = 0) -> None:
         """End sending audio out."""
@@ -667,15 +640,13 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def send_tts_request_metrics(
         self,
         request_id: str,
-        output_characters: int,
+        output_characters: int | None,
         *,
         request_time_ms: int | None = None,
-        request_final: bool = False,
         extra_metadata: dict | None = None,
     ) -> None:
         metadata = self.update_metadata(request_id, extra_metadata)
         metadata["request_id"] = request_id
-        metadata["request_final"] = request_final
         metrics = ModuleMetrics(
             id=self.get_uuid(),
             module=ModuleType.TTS,
@@ -697,21 +668,6 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             metadata=metadata,
         )
         await self.send_metrics(metrics, request_id)
-
-    async def send_tts_request_final_marker(self, request_id: str) -> None:
-        metadata = self.update_metadata(request_id, None)
-        metadata["request_id"] = request_id
-        metadata["request_final"] = True
-        await self.send_metrics(
-            ModuleMetrics(
-                id=self.get_uuid(),
-                module=ModuleType.TTS,
-                vendor=self.vendor(),
-                metrics={},
-                metadata=metadata,
-            ),
-            request_id,
-        )
 
     async def metrics_calculate_duration(self) -> None:
         self.recv_audio_duration = (

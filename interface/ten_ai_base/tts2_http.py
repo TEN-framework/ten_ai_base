@@ -269,7 +269,6 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                     request_id=t.request_id,
                     request_time_ms=request_time_ms,
                     output_characters=len(t.text),
-                    request_final=t.text_input_end,
                 )
 
             chunk_count = 0

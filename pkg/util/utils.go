@@ -12,15 +12,10 @@ import (
 const (
 	maxMaskVisibleRunes  = 5
 	maskFingerprintBytes = 4
-	minMaskedSecretRunes = 1 + 3 + 1 + 1 + maskFingerprintBytes*2
-	maxMaskedSecretRunes = maxMaskVisibleRunes*2 + 3 + 1 + maskFingerprintBytes*2
 )
 
 // maskedSecretPattern recognizes the canonical value produced by maskDefault.
-// It is compiled once because masking is used on reporting hot paths. Keep the
-// format constants shared with maskDefault to prevent the recognizer and
-// formatter from drifting. A plaintext value that exactly matches this format
-// is intentionally treated as already masked.
+// It is compiled once because masking is used on reporting hot paths.
 var maskedSecretPattern = regexp.MustCompile(fmt.Sprintf(
 	`(?s)^.{1,%d}\.\.\..{1,%d}#[0-9a-f]{%d}$`,
 	maxMaskVisibleRunes,
@@ -62,11 +57,7 @@ func maskDefault(value string) string {
 		return value
 	}
 	runes := []rune(value)
-	// Avoid regex work for ordinary secrets whose length cannot match the
-	// canonical masked representation.
-	if len(runes) >= minMaskedSecretRunes &&
-		len(runes) <= maxMaskedSecretRunes &&
-		maskedSecretPattern.MatchString(value) {
+	if maskedSecretPattern.MatchString(value) {
 		return value
 	}
 	step := len(runes) / 5

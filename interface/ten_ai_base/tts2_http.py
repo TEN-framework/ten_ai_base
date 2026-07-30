@@ -268,7 +268,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
                 await self.send_tts_request_metrics(
                     request_id=t.request_id,
                     request_time_ms=request_time_ms,
-                    output_characters=len(t.text),
+                    request_text=t.text,
                 )
 
             chunk_count = 0

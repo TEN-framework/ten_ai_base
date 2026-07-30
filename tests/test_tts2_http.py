@@ -427,7 +427,7 @@ def test_http_vendor_attempt_emits_request_metrics():
         extension.request_tts(
             TTSTextInput(
                 request_id="request-metrics",
-                text="hello",
+                text="你好",
                 text_input_end=True,
                 metadata={"session_id": "session-1", "turn_id": 7},
             )
@@ -447,7 +447,7 @@ def test_http_vendor_attempt_emits_request_metrics():
     assert request_metrics["module"] == "tts"
     assert request_metrics["vendor"] == "test_vendor"
     assert request_metrics["metrics"]["request_time_ms"] > 0
-    assert request_metrics["metrics"]["request_bytes"] == 5
+    assert request_metrics["metrics"]["request_bytes"] == 6
     assert request_metrics["metrics"]["response_time_ms"] == 0
     assert request_metrics["metrics"]["response_bytes"] == 0
     assert request_metrics["metadata"]["request_id"] == "request-metrics"

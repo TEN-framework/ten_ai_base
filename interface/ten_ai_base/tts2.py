@@ -640,7 +640,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
     async def send_tts_request_metrics(
         self,
         request_id: str,
-        output_characters: int | None,
+        request_text: str | None,
         *,
         request_time_ms: int | None = None,
         extra_metadata: dict | None = None,
@@ -658,8 +658,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     else int(time.time() * 1000)
                 ),
                 ModuleMetricKey.REQUEST_BYTES: (
-                    output_characters
-                    if isinstance(output_characters, int) and output_characters >= 0
+                    len(request_text.encode("utf-8"))
+                    if isinstance(request_text, str)
                     else 0
                 ),
                 ModuleMetricKey.RESPONSE_TIME_MS: 0,

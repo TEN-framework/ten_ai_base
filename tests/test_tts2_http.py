@@ -112,9 +112,7 @@ def _load_tts2_http_symbols():
     }
     sys.modules.update(fake_runtime_modules)
 
-    package_root = (
-        Path(__file__).resolve().parents[1] / "interface" / "ten_ai_base"
-    )
+    package_root = Path(__file__).resolve().parents[1] / "interface" / "ten_ai_base"
     package_name = "ten_ai_base"
     package_module_names = [
         package_name,
@@ -145,9 +143,7 @@ def _load_tts2_http_symbols():
             "tts2",
             "tts2_http",
         ]:
-            _load_module(
-                f"{package_name}.{module}", package_root / f"{module}.py"
-            )
+            _load_module(f"{package_name}.{module}", package_root / f"{module}.py")
 
         return {
             "AsyncTTS2HttpClient": sys.modules[
@@ -159,27 +155,19 @@ def _load_tts2_http_symbols():
             "AsyncTTS2HttpExtension": sys.modules[
                 f"{package_name}.tts2_http"
             ].AsyncTTS2HttpExtension,
-            "RequestState": sys.modules[
-                f"{package_name}.tts2"
-            ].RequestState,
+            "RequestState": sys.modules[f"{package_name}.tts2"].RequestState,
             "ModuleConnectionStatus": sys.modules[
                 f"{package_name}.message"
             ].ModuleConnectionStatus,
-            "ModuleError": sys.modules[
-                f"{package_name}.message"
-            ].ModuleError,
+            "ModuleError": sys.modules[f"{package_name}.message"].ModuleError,
             "TTSAudioEndReason": sys.modules[
                 f"{package_name}.message"
             ].TTSAudioEndReason,
             "TTS2HttpResponseEventType": sys.modules[
                 f"{package_name}.struct"
             ].TTS2HttpResponseEventType,
-            "TTSTextInput": sys.modules[
-                f"{package_name}.struct"
-            ].TTSTextInput,
-            "mask_secret": sys.modules[
-                f"{package_name}.utils"
-            ].mask_secret,
+            "TTSTextInput": sys.modules[f"{package_name}.struct"].TTSTextInput,
+            "mask_secret": sys.modules[f"{package_name}.utils"].mask_secret,
         }
     finally:
         for name, module in original_package_modules.items():
@@ -255,6 +243,13 @@ class FakeHttpClient(AsyncTTS2HttpClient):
 
     def get_extra_metadata(self) -> dict[str, str]:
         return self.extra_metadata
+
+
+class FailingHttpClient(FakeHttpClient):
+    async def get(self, text: str, request_id: str):
+        if False:
+            yield None
+        raise RuntimeError("vendor request failed")
 
 
 class RecordingHttpExtension(AsyncTTS2HttpExtension):
@@ -389,7 +384,7 @@ def test_vendor_metadata_is_added_to_metrics_and_errors():
     extension = RecordingHttpExtension([])
     extension.metadatas["req"] = {
         "session_id": "session-1",
-        "vendor_metadata": {"region": "us"},
+        "vendor_metadata": {"existing": "must-not-pass-through"},
     }
 
     _run(extension.metrics_connect_delay(42, request_id="req"))
@@ -410,7 +405,6 @@ def test_vendor_metadata_is_added_to_metrics_and_errors():
     assert metrics_payload["metadata"] == {
         "session_id": "session-1",
         "vendor_metadata": {
-            "region": "us",
             "key": mask_secret("sk-test-secret-1234"),
             "url": "wss://tts.example",
         },
@@ -419,17 +413,128 @@ def test_vendor_metadata_is_added_to_metrics_and_errors():
         "session_id": "session-1",
         "turn_id": 7,
         "vendor_metadata": {
-            "region": "us",
             "key": mask_secret("sk-test-secret-1234"),
             "url": "wss://tts.example",
         },
     }
 
 
-def test_zero_audio_end_finishes_without_audio_start():
-    extension = RecordingHttpExtension(
-        [(None, TTS2HttpResponseEventType.END)]
+def test_http_vendor_attempt_emits_request_metrics():
+    extension = RecordingHttpExtension([(None, TTS2HttpResponseEventType.END)])
+    _mark_request_finalizing(extension, "request-metrics")
+
+    _run(
+        extension.request_tts(
+            TTSTextInput(
+                request_id="request-metrics",
+                text="你好",
+                text_input_end=True,
+                metadata={"session_id": "session-1", "turn_id": 7},
+            )
+        )
     )
+
+    metrics_payloads = [
+        _data_payload(data)
+        for data in extension.ten_env.sent_data
+        if data.name == "metrics"
+    ]
+    request_metrics = next(
+        payload
+        for payload in metrics_payloads
+        if "request_time_ms" in payload["metrics"]
+    )
+    assert request_metrics["module"] == "tts"
+    assert request_metrics["vendor"] == "test_vendor"
+    assert request_metrics["metrics"]["request_time_ms"] > 0
+    assert request_metrics["metrics"]["request_bytes"] == 6
+    assert request_metrics["metrics"]["response_time_ms"] == 0
+    assert request_metrics["metrics"]["response_bytes"] == 0
+    assert request_metrics["metadata"]["request_id"] == "request-metrics"
+    assert "request_final" not in request_metrics["metadata"]
+
+
+def test_request_id_change_preserves_existing_buffering_behavior():
+    class RequestChangeExtension(RecordingHttpExtension):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.events = []
+
+        async def request_tts(self, t: TTSTextInput) -> None:
+            self.events.append(("provider", t.request_id))
+
+    extension = RequestChangeExtension()
+    extension.request_states["previous"] = RequestState.PROCESSING
+    extension.request_states["next"] = RequestState.QUEUED
+    extension._processing_request_id = "previous"
+
+    async def process() -> None:
+        await extension.input_queue.put(
+            TTSTextInput(
+                request_id="next",
+                text="hello",
+                text_input_end=False,
+                metadata={},
+            )
+        )
+        await extension.input_queue.put(None)
+        await extension._process_input_queue(extension.ten_env)
+
+    _run(process())
+
+    assert extension.events == []
+    assert extension.request_states["previous"] == RequestState.PROCESSING
+    assert extension.request_states["next"] == RequestState.QUEUED
+    assert extension._processing_request_id == "previous"
+    assert [item.request_id for item in extension._pending_messages["next"]] == ["next"]
+
+
+def test_flush_only_cancels_current_tts_request():
+    class FlushReportingExtension(RecordingHttpExtension):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.events = []
+
+        async def cancel_tts(self) -> None:
+            self.events.append(("cancel", self._processing_request_id))
+
+    extension = FlushReportingExtension()
+    extension.request_states["current"] = RequestState.PROCESSING
+    extension._processing_request_id = "current"
+
+    _run(extension._flush_input_items())
+
+    assert extension.events == [("cancel", "current")]
+
+
+def test_http_vendor_failure_still_emits_request_metrics():
+    extension = RecordingHttpExtension([])
+    extension.client = FailingHttpClient([])
+    _mark_request_finalizing(extension, "failed-request")
+
+    _run(
+        extension.request_tts(
+            TTSTextInput(
+                request_id="failed-request",
+                text="failed text",
+                text_input_end=True,
+                metadata={},
+            )
+        )
+    )
+
+    metrics_payloads = [
+        _data_payload(data)
+        for data in extension.ten_env.sent_data
+        if data.name == "metrics"
+    ]
+    assert any(
+        payload["metrics"].get("request_bytes") == 11 for payload in metrics_payloads
+    )
+
+
+def test_zero_audio_end_finishes_without_audio_start():
+    extension = RecordingHttpExtension([(None, TTS2HttpResponseEventType.END)])
     extension.request_ts = datetime(2000, 1, 1)
     _mark_request_finalizing(extension, "silent-final")
 
@@ -457,9 +562,7 @@ def test_zero_audio_end_finishes_without_audio_start():
 
 
 def test_zero_audio_end_releases_next_queued_request():
-    extension = RecordingHttpExtension(
-        [(None, TTS2HttpResponseEventType.END)]
-    )
+    extension = RecordingHttpExtension([(None, TTS2HttpResponseEventType.END)])
     next_request = TTSTextInput(
         request_id="next-request",
         text="queued",

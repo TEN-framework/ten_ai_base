@@ -6,12 +6,21 @@
 from abc import ABC, abstractmethod
 import asyncio
 import json
+import re
 import traceback
 from typing import AsyncGenerator, Dict, Optional
 
-from .struct import LLMRequest, LLMRequestAbort, LLMRequestRetrievePrompt, LLMResponse, LLMResponseRetrievePrompt
+from .llm import DATA_LLM_IN_SET_PROMPT
+from .struct import (
+    LLMRequest,
+    LLMRequestAbort,
+    LLMRequestRetrievePrompt,
+    LLMResponse,
+    LLMResponseRetrievePrompt,
+)
 from ten_runtime import (
     AsyncExtension,
+    Data,
 )
 from ten_runtime.async_ten_env import AsyncTenEnv
 from ten_runtime.cmd import Cmd
@@ -35,6 +44,7 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
         self.ten_env: AsyncTenEnv = None
         self._inflight: Dict[str, "AsyncLLM2BaseExtension._TaskCtx"] = {}
         self._lock = asyncio.Lock()
+        self.dynamic_prompt: str | None = None  # Dynamic prompt set by prompt_template extension
 
 
     async def on_init(self, async_ten_env: AsyncTenEnv) -> None:
@@ -43,6 +53,17 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
 
     async def on_start(self, async_ten_env: AsyncTenEnv) -> None:
         await super().on_start(async_ten_env)
+
+    async def on_data(self, async_ten_env: AsyncTenEnv, data: Data) -> None:
+        """Handle incoming data messages (dynamic prompt updates)."""
+        data_name = data.get_name()
+        async_ten_env.log_debug(f"[LLM2Base] on_data: {data_name}")
+        if data_name == DATA_LLM_IN_SET_PROMPT:
+            prompt_json, _ = data.get_property_to_json(None)
+            prompt_data = json.loads(prompt_json)
+            new_prompt = prompt_data.get("prompt", "")
+            self.dynamic_prompt = new_prompt
+            async_ten_env.log_info(f"[LLM2Base] Dynamic prompt set: {new_prompt[:100]}...")
 
     async def on_stop(self, async_ten_env: AsyncTenEnv) -> None:
         await self._cancel_all()
@@ -65,6 +86,13 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
                 rid = req.request_id
                 if not rid:
                     raise RuntimeError("LLMRequest.request_id is required")
+
+                # Apply prompt template rendering if prompt is provided in request
+                prompt_params = getattr(req, "prompt_params", None)
+                if req.prompt is not None:
+                    req.prompt = self.get_prompt(req.prompt, prompt_params)
+                elif self.dynamic_prompt is not None:
+                    req.prompt = self.dynamic_prompt
 
                 # Reject duplicates instead of replacing
                 async with self._lock:
@@ -139,6 +167,25 @@ class AsyncLLM2BaseExtension(AsyncExtension, ABC):
             self.task = task
             self.cmd = cmd
             self.request_id = request_id
+
+    def get_prompt(self, config_prompt: str, prompt_params: dict | None = None) -> str:
+        """
+        Get the effective prompt to use, with optional template rendering.
+
+        If prompt_params is provided and config_prompt contains {{placeholder}} patterns,
+        they will be replaced with the corresponding values from prompt_params.
+        """
+        if self.dynamic_prompt is not None:
+            return self.dynamic_prompt
+        if not prompt_params:
+            return config_prompt
+
+        def replace_placeholder(match):
+            key = match.group(1).strip()
+            return str(prompt_params.get(key, match.group(0)))
+
+        pattern = r"\{\{(\w+)\}\}"
+        return re.sub(pattern, replace_placeholder, config_prompt)
 
     async def _start_locked(self, ten_env: AsyncTenEnv, cmd: Cmd, req: LLMRequest) -> None:
         """Call with self._lock held. Starts a task and registers it in _inflight."""

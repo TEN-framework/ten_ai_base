@@ -26,35 +26,6 @@ def test_mask_secret_masks_long_values():
     assert mask_secret("abcdefghijklmnopqrstuvwxyz") == "abcde...vwxyz#71c480df"
 
 
-@pytest.mark.parametrize(
-    "secret",
-    [
-        "abcde",
-        "abcdef123456",
-        "abcdefghijklmnopqrstuvwxyz",
-        "密钥abcdef123456",
-    ],
-)
-def test_mask_secret_does_not_mask_its_own_output_twice(secret):
-    masked = mask_secret(secret)
-
-    assert mask_secret(masked) == masked
-    assert redact_json({"api_key": masked})["api_key"] == masked
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        "a...b#1234567",
-        "a...b#123456789",
-        "a...b#1234567G",
-        "abcdef...b#12345678",
-    ],
-)
-def test_mask_secret_does_not_treat_malformed_values_as_masked(value):
-    assert mask_secret(value) != value
-
-
 def test_mask_secret_keeps_short_values():
     assert mask_secret("") == ""
     assert mask_secret("a") == "a"

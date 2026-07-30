@@ -61,27 +61,6 @@ func TestMaskSecret(t *testing.T) {
 			t.Fatalf("MaskSecret() fingerprint = %q", got)
 		}
 	})
-
-	t.Run("does not mask its own output twice", func(t *testing.T) {
-		values := []string{
-			"abcde",
-			"abcdef123456",
-			"abcdefghijklmnopqrstuvwxyz",
-			"密钥abcdef123456",
-		}
-		for _, value := range values {
-			masked := ten_ai_base.MaskSecret(value)
-			if got := ten_ai_base.MaskSecret(masked); got != masked {
-				t.Fatalf("MaskSecret(MaskSecret(%q)) = %q, want %q", value, got, masked)
-			}
-		}
-	})
-}
-
-func BenchmarkMaskSecret(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		ten_ai_base.MaskSecret("Bearer abcdef1234567890")
-	}
 }
 
 func TestDefaultKeys(t *testing.T) {

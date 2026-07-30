@@ -5,23 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 )
-
-const (
-	maxMaskVisibleRunes  = 5
-	maskFingerprintBytes = 4
-)
-
-// maskedSecretPattern recognizes the canonical value produced by maskDefault.
-// It is compiled once because masking is used on reporting hot paths.
-var maskedSecretPattern = regexp.MustCompile(fmt.Sprintf(
-	`(?s)^.{1,%d}\.\.\..{1,%d}#[0-9a-f]{%d}$`,
-	maxMaskVisibleRunes,
-	maxMaskVisibleRunes,
-	maskFingerprintBytes*2,
-))
 
 var DefaultHeaderKeys = []string{"authorization", "api-key", "x-api-key", "xi-api-key"}
 
@@ -57,18 +42,15 @@ func maskDefault(value string) string {
 		return value
 	}
 	runes := []rune(value)
-	if maskedSecretPattern.MatchString(value) {
-		return value
-	}
 	step := len(runes) / 5
 	if step <= 0 {
 		return value
 	}
-	if step > maxMaskVisibleRunes {
-		step = maxMaskVisibleRunes
+	if step > 5 {
+		step = 5
 	}
 	sum := sha256.Sum256([]byte(value))
-	fingerprint := fmt.Sprintf("%x", sum[:maskFingerprintBytes])
+	fingerprint := fmt.Sprintf("%x", sum[:4])
 	return string(runes[:step]) + "..." + string(runes[len(runes)-step:]) + "#" + fingerprint
 }
 

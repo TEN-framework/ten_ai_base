@@ -384,10 +384,7 @@ def test_vendor_metadata_is_added_to_metrics_and_errors():
     extension = RecordingHttpExtension([])
     extension.metadatas["req"] = {
         "session_id": "session-1",
-        "vendor_metadata": {
-            "region": "us",
-            "api_key": "existing-secret-5678",
-        },
+        "vendor_metadata": {"existing": "must-not-pass-through"},
     }
 
     _run(extension.metrics_connect_delay(42, request_id="req"))
@@ -408,8 +405,6 @@ def test_vendor_metadata_is_added_to_metrics_and_errors():
     assert metrics_payload["metadata"] == {
         "session_id": "session-1",
         "vendor_metadata": {
-            "region": "us",
-            "api_key": mask_secret("existing-secret-5678"),
             "key": mask_secret("sk-test-secret-1234"),
             "url": "wss://tts.example",
         },
@@ -418,8 +413,6 @@ def test_vendor_metadata_is_added_to_metrics_and_errors():
         "session_id": "session-1",
         "turn_id": 7,
         "vendor_metadata": {
-            "region": "us",
-            "api_key": mask_secret("existing-secret-5678"),
             "key": mask_secret("sk-test-secret-1234"),
             "url": "wss://tts.example",
         },

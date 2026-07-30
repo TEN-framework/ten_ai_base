@@ -33,26 +33,16 @@ DEFAULT_JSON_KEYS = frozenset(
 )
 DEFAULT_URL_KEYS = frozenset({"sign", "signature"} | DEFAULT_JSON_KEYS)
 
-_MAX_MASK_VISIBLE_CHARS = 5
-_MASK_FINGERPRINT_HEX_CHARS = 8
-# Precompile the canonical masked format because masking runs on reporting paths.
-# Recognizing this exact format makes repeated masking idempotent.
-_MASKED_SECRET_PATTERN = re.compile(
-    rf"^.{{1,{_MAX_MASK_VISIBLE_CHARS}}}\.\.\."
-    rf".{{1,{_MAX_MASK_VISIBLE_CHARS}}}#[0-9a-f]{{{_MASK_FINGERPRINT_HEX_CHARS}}}$",
-    re.DOTALL,
-)
-
 
 def _mask_default(value: str) -> str:
-    if not value or _MASKED_SECRET_PATTERN.fullmatch(value):
+    if not value:
         return value
-    step = min(len(value) // 5, _MAX_MASK_VISIBLE_CHARS)
-    if step == 0:
+    step = int(len(value) / 5)
+    if step <= 0:
         return value
-    fingerprint = hashlib.sha256(value.encode("utf-8")).hexdigest()[
-        :_MASK_FINGERPRINT_HEX_CHARS
-    ]
+    if step > 5:
+        step = 5
+    fingerprint = hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
     return f"{value[:step]}...{value[-step:]}#{fingerprint}"
 
 

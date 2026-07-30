@@ -968,15 +968,10 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             new_metadata = self.metadatas.get(request_id).copy()
         if metadata:
             new_metadata.update(metadata)
-        vendor_metadata = self.vendor_metadata() or {}
+        new_metadata.pop(VENDOR_METADATA_KEY, None)
+        vendor_metadata = redact_json(self.vendor_metadata() or {})
         if vendor_metadata:
-            existing_vendor_metadata = new_metadata.get(VENDOR_METADATA_KEY, {})
-            if isinstance(existing_vendor_metadata, dict):
-                merged_vendor_metadata = existing_vendor_metadata.copy()
-                merged_vendor_metadata.update(vendor_metadata)
-                new_metadata[VENDOR_METADATA_KEY] = redact_json(merged_vendor_metadata)
-            else:
-                new_metadata[VENDOR_METADATA_KEY] = redact_json(vendor_metadata)
+            new_metadata[VENDOR_METADATA_KEY] = vendor_metadata
         return new_metadata
 
     async def cancel_tts(self) -> None:

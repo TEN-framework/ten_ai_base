@@ -8,6 +8,8 @@
       "interface/**",
       "api/**",
       "include/**",
+      "src/**",
+      "BUILD.gn",
       "requirements.txt",
       "pyproject.toml",
       "go.mod",

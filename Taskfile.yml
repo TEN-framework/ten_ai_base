@@ -54,6 +54,7 @@ tasks:
           -I"{{.GTEST}}/include" \
           -I"{{.GTEST}}" \
           "{{.GTEST}}/src/gtest-all.cc" \
+          "{{.USER_WORKING_DIR}}/src/ten_ai_base/utils.cc" \
           "{{.USER_WORKING_DIR}}/tests/cpp/gtest_main.cc" \
           "{{.USER_WORKING_DIR}}/tests/cpp/util_test.cc" \
           -pthread \

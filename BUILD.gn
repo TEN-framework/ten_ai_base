@@ -1,0 +1,41 @@
+#
+# Copyright © 2025 Agora
+# This file is part of TEN Framework, an open source project.
+# Licensed under the Apache License, Version 2.0, with certain conditions.
+# Refer to the "LICENSE" file in the root directory for more information.
+#
+
+config("ten_ai_base_header") {
+  include_dirs = [
+    "//ten_packages/system/ten_ai_base/include",
+    "//.ten/app/ten_packages/system/ten_ai_base/include",
+  ]
+}
+
+config("ten_ai_base_nlohmann") {
+  include_dirs = [
+    "//ten_packages/system/nlohmann_json/include",
+    "//.ten/app/ten_packages/system/nlohmann_json/include",
+  ]
+}
+
+source_set("ten_ai_base") {
+  public_configs = [
+    ":ten_ai_base_header",
+    ":ten_ai_base_nlohmann",
+  ]
+
+  sources = [ "src/ten_ai_base/utils.cc" ]
+}
+
+config("config_for_app") {
+  configs = [ ":ten_ai_base_header" ]
+}
+
+config("config_for_ten_packages") {
+  configs = [ ":ten_ai_base_header" ]
+}
+
+config("config_for_standalone_ten_packages") {
+  configs = [ ":ten_ai_base_header" ]
+}

@@ -1,12 +1,13 @@
 {
   "type": "system",
   "name": "ten_ai_base",
-  "version": "0.7.58",
+  "version": "0.7.59",
   "package": {
     "include": [
       "manifest.json",
       "interface/**",
       "api/**",
+      "include/**",
       "requirements.txt",
       "pyproject.toml",
       "go.mod",
@@ -18,6 +19,18 @@
       "type": "system",
       "name": "ten_runtime_python",
       "version": "0.11"
+    },
+    {
+      "type": "system",
+      "name": "nlohmann_json",
+      "version": "3.11.2"
+    }
+  ],
+  "dev_dependencies": [
+    {
+      "type": "system",
+      "name": "googletest",
+      "version": "=1.7.0-rc2"
     }
   ],
   "api": {}

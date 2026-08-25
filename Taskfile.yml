@@ -34,6 +34,32 @@ tasks:
     cmds: 
       - ./tests/bin/start {{ .CLI_ARGS }}
 
+  test-cpp-deps:
+    desc: install C++ test dependencies (googletest, nlohmann_json)
+    cmds:
+      - tman install --standalone
+
+  test-cpp:
+    desc: run C++ unit tests
+    vars:
+      GTEST: '{{.USER_WORKING_DIR}}/.ten/app/ten_packages/system/googletest'
+      NLOHMANN: '{{.USER_WORKING_DIR}}/.ten/app/ten_packages/system/nlohmann_json/include'
+      OUT: '{{.USER_WORKING_DIR}}/tests/cpp/util_test_bin'
+    cmds:
+      - task: test-cpp-deps
+      - |
+        g++ -std=c++14 \
+          -I"{{.USER_WORKING_DIR}}/include" \
+          -I"{{.NLOHMANN}}" \
+          -I"{{.GTEST}}/include" \
+          -I"{{.GTEST}}" \
+          "{{.GTEST}}/src/gtest-all.cc" \
+          "{{.USER_WORKING_DIR}}/tests/cpp/gtest_main.cc" \
+          "{{.USER_WORKING_DIR}}/tests/cpp/util_test.cc" \
+          -pthread \
+          -o "{{.OUT}}"
+      - '{{.OUT}} {{ .CLI_ARGS }}'
+
   test-integration:
     desc: run integration tests
     vars:

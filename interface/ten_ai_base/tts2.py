@@ -36,7 +36,7 @@ from ten_runtime.cmd import Cmd
 from ten_runtime.cmd_result import CmdResult, StatusCode
 from ten_ai_base.const import (
     DATA_OUT_CONNECTION_STATUS_CHANGED,
-    LOG_CATEGORY_VENDOR,
+    LOG_CATEGORY_CONVERSATION_CONTENT,
     LOG_CATEGORY_KEY_POINT,
     VENDOR_METADATA_KEY,
 )
@@ -247,7 +247,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 t = TTSTextInput.model_validate_json(data_payload)
                 self.ten_env.log_info(
                     f"on_data tts_text_input:  {t}",
-                    category=LOG_CATEGORY_KEY_POINT,
+                    category=LOG_CATEGORY_CONVERSATION_CONTENT,
                 )
             except Exception as e:
                 ten_env.log_warn(f"invalid data {data_name} payload, err {e}")
@@ -427,10 +427,14 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 await self.request_tts(t)
 
             except asyncio.CancelledError:
-                ten_env.log_info(f"Task cancelled: {t.text}")
+                ten_env.log_info(
+                    f"Task cancelled: {t.text}",
+                    category=LOG_CATEGORY_CONVERSATION_CONTENT,
+                )
             except Exception as err:
                 ten_env.log_error(
-                    f"Task failed: {t.text}, err: {traceback.format_exc()}"
+                    f"Task failed: {t.text}, err: {traceback.format_exc()}",
+                    category=LOG_CATEGORY_CONVERSATION_CONTENT,
                 )
 
     async def send_tts_audio_data(self, audio_data: bytes, timestamp: int = 0) -> None:
@@ -916,7 +920,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                             await self.input_queue.put(msg)
                             self.ten_env.log_debug(
                                 f"Put buffered message back to queue: request_id={msg.request_id}, "
-                                f"text={msg.text[:50]}..."
+                                f"text={msg.text[:50]}...",
+                                category=LOG_CATEGORY_CONVERSATION_CONTENT,
                             )
 
     @abstractmethod

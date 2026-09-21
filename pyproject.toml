@@ -1,6 +1,6 @@
 [project]
 name = "ten_ai_base"
-version = "0.7.58"
+version = "0.7.59"
 description = "TEN Framework base AI module"
 requires-python = ">=3.10"
 dependencies = [

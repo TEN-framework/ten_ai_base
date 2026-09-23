@@ -32,6 +32,7 @@ from .const import (
     DATA_OUT_ASR_FINALIZE_END,
     DATA_OUT_CONNECTION_STATUS_CHANGED,
     DATA_OUT_METRICS,
+    LOG_CATEGORY_TRANSCRIPTS,
     LOG_CATEGORY_KEY_POINT,
     PROPERTY_KEY_METADATA,
     PROPERTY_KEY_SESSION_ID,
@@ -350,7 +351,8 @@ class AsyncASRBaseExtension(AsyncExtension):
         await self.ten_env.send_data(stable_data)
 
         self.ten_env.log_info(
-            f"send_asr_result: {model_json}", category=LOG_CATEGORY_KEY_POINT
+            f"send_asr_result: {model_json}",
+            category=LOG_CATEGORY_TRANSCRIPTS,
         )
 
         if asr_result.final:

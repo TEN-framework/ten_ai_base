@@ -920,7 +920,8 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                             await self.input_queue.put(msg)
                             self.ten_env.log_debug(
                                 f"Put buffered message back to queue: request_id={msg.request_id}, "
-                                f"text={msg.text[:50]}..."
+                                f"text={msg.text[:50]}...",
+                                category=LOG_CATEGORY_TRANSCRIPTS,
                             )
 
     @abstractmethod

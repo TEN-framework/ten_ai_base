@@ -23,7 +23,11 @@ from .message import (
 )
 from .struct import TTS2HttpResponseEventType, TTSTextInput
 from .tts2 import AsyncTTS2BaseExtension, RequestState
-from .const import LOG_CATEGORY_VENDOR, LOG_CATEGORY_KEY_POINT
+from .const import (
+    LOG_CATEGORY_KEY_POINT,
+    LOG_CATEGORY_TRANSCRIPTS,
+    LOG_CATEGORY_VENDOR,
+)
 from ten_runtime import AsyncTenEnv
 
 
@@ -189,6 +193,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
         try:
             self.ten_env.log_info(
                 f"Requesting TTS for text: {t.text}, text_input_end: {t.text_input_end} request ID: {t.request_id}",
+                category=LOG_CATEGORY_TRANSCRIPTS,
             )
             # If client is None, it means the connection was dropped or never initialized.
             # Attempt to re-establish the connection.
@@ -260,7 +265,7 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
             # Get audio stream from TTS
             self.ten_env.log_debug(
                 f"send_text_to_tts_server:  {t.text} of request_id: {t.request_id}",
-                category=LOG_CATEGORY_VENDOR,
+                category=LOG_CATEGORY_TRANSCRIPTS,
             )
             request_time_ms = int(time.time() * 1000)
             data = self.client.get(t.text, t.request_id)

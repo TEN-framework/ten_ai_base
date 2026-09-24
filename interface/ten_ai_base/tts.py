@@ -25,6 +25,7 @@ from .const import (
 from .types import TTSPcmOptions
 from .helper import AsyncQueue
 from .transcription import AssistantTranscription, Word
+from .const import LOG_CATEGORY_TRANSCRIPTS
 
 DATA_TRANSCRIPT = "text_data"
 
@@ -91,7 +92,8 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
             if err:
                 raise RuntimeError(f"Failed to get data payload: {err}")
             async_ten_env.log_debug(
-                f"on_data {data_name}, payload {data_payload}"
+                f"on_data {data_name}, payload {data_payload}",
+                category=LOG_CATEGORY_TRANSCRIPTS,
             )
 
             try:
@@ -220,8 +222,11 @@ class AsyncTTSBaseExtension(AsyncExtension, ABC):
                 await self.current_task  # Wait for the current task to finish or be cancelled
                 self.current_task = None
             except asyncio.CancelledError:
-                ten_env.log_info(f"Task cancelled: {t.text}")
+                ten_env.log_info(
+                    f"Task cancelled: {t.text}", category=LOG_CATEGORY_TRANSCRIPTS
+                )
             except Exception as err:
                 ten_env.log_error(
-                    f"Task failed: {t.text}, err: {traceback.format_exc()}"
+                    f"Task failed: {t.text}, err: {traceback.format_exc()}",
+                    category=LOG_CATEGORY_TRANSCRIPTS,
                 )

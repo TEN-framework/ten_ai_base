@@ -5,6 +5,7 @@
 #
 from abc import ABC, abstractmethod
 import asyncio
+import re
 import traceback
 
 from ten_runtime import (
@@ -25,6 +26,8 @@ from .const import (
 from .types import LLMCallCompletionArgs, LLMDataCompletionArgs, LLMToolMetadata
 from .helper import AsyncQueue
 import json
+
+DATA_LLM_IN_SET_PROMPT = "llm_client_set_prompt"
 
 
 class AsyncLLMBaseExtension(AsyncExtension, ABC):
@@ -50,9 +53,12 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
         self.hit_default_cmd = False
         self.loop_task = None
         self.loop = None
+        self.dynamic_prompt: str | None = None  # Dynamic prompt set by prompt_template extension
+        self.ten_env: AsyncTenEnv = None  # type: ignore
 
     async def on_init(self, async_ten_env: AsyncTenEnv) -> None:
         await super().on_init(async_ten_env)
+        self.ten_env = async_ten_env
 
     async def on_start(self, async_ten_env: AsyncTenEnv) -> None:
         await super().on_start(async_ten_env)
@@ -69,6 +75,49 @@ class AsyncLLMBaseExtension(AsyncExtension, ABC):
 
     async def on_deinit(self, async_ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(async_ten_env)
+
+    async def on_data(self, async_ten_env: AsyncTenEnv, data: Data) -> None:
+        """Handle incoming data messages."""
+        data_name = data.get_name()
+        async_ten_env.log_debug(f"on_data name: {data_name}")
+        if data_name == DATA_LLM_IN_SET_PROMPT:
+            prompt_json, _ = data.get_property_to_json(None)
+            prompt_data = json.loads(prompt_json)
+            new_prompt = prompt_data.get("prompt", "")
+            self.dynamic_prompt = new_prompt
+            async_ten_env.log_info(f"Dynamic prompt set: {new_prompt[:100]}...")
+            await self.on_prompt_update(new_prompt)
+
+    async def on_prompt_update(self, prompt: str) -> None:
+        """
+        Called when a dynamic prompt is set by the prompt_template extension.
+        Subclasses can override this method to apply the new prompt.
+        Default implementation does nothing - subclass should update conversation context if needed.
+        """
+        pass
+
+    def get_prompt(
+        self, config_prompt: str, prompt_params: dict | None = None
+    ) -> str:
+        """
+        Get the effective prompt to use.
+        Returns dynamic_prompt if set by prompt_template extension,
+        otherwise returns the config_prompt from property.json.
+
+        If prompt_params is provided and config_prompt contains {{placeholder}} patterns,
+        they will be replaced with the corresponding values from prompt_params.
+        """
+        if self.dynamic_prompt is not None:
+            return self.dynamic_prompt
+        if not prompt_params:
+            return config_prompt
+
+        def replace_placeholder(match):
+            key = match.group(1).strip()
+            return str(prompt_params.get(key, match.group(0)))
+
+        pattern = r"\{\{(\w+)\}\}"
+        return re.sub(pattern, replace_placeholder, config_prompt)
 
     async def on_cmd(self, async_ten_env: AsyncTenEnv, cmd: Cmd) -> None:
         """

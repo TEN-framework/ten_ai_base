@@ -7,6 +7,7 @@ from abc import abstractmethod
 import traceback
 from typing import final
 import uuid
+import re
 
 from .struct import MLLMClientCreateResponse, MLLMClientFunctionCallOutput, MLLMClientMessageItem, MLLMClientRegisterTool, MLLMClientSendMessageItem, MLLMClientSetMessageContext, MLLMServerFunctionCall, MLLMServerInputTranscript, MLLMServerOutputTranscript, MLLMServerSessionReady, MLLMServerInterrupt
 
@@ -44,6 +45,7 @@ DATA_MLLM_IN_SEND_MESSAGE_ITEM = "mllm_client_request_message_item"
 DATA_MLLM_IN_CREATE_RESPONSE = "mllm_client_request_create_response"
 DATA_MLLM_IN_REGISTER_TOOL = "mllm_client_request_register_tool"
 DATA_MLLM_IN_FUNCTION_CALL_OUTPUT = "mllm_client_function_call_output"
+DATA_MLLM_IN_SET_PROMPT = "mllm_client_set_prompt"
 
 
 class AsyncMLLMBaseExtension(AsyncExtension):
@@ -60,6 +62,7 @@ class AsyncMLLMBaseExtension(AsyncExtension):
         self.uuid = self._get_uuid()  # Unique identifier for the current final turn
         self.leftover_bytes = b""
         self.message_context: list[MLLMClientMessageItem] = []  # Context for the current message
+        self.dynamic_prompt: str | None = None  # Dynamic prompt set by prompt_template extension
 
         # States for TTFW calculation
         self.first_audio_time: float | None = (
@@ -102,6 +105,13 @@ class AsyncMLLMBaseExtension(AsyncExtension):
             function_call_output_json, _ = data.get_property_to_json(None)
             function_call_output = MLLMClientFunctionCallOutput.model_validate_json(function_call_output_json)
             await self.send_client_function_call_output(function_call_output)
+        elif data_name == DATA_MLLM_IN_SET_PROMPT:
+            prompt_json, _ = data.get_property_to_json(None)
+            prompt_data = json.loads(prompt_json)
+            new_prompt = prompt_data.get("prompt", "")
+            self.dynamic_prompt = new_prompt
+            ten_env.log_info(f"Dynamic prompt set: {new_prompt[:100]}...")
+            await self.on_prompt_update(new_prompt)
 
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
@@ -234,6 +244,44 @@ class AsyncMLLMBaseExtension(AsyncExtension):
         Note: The first successful send_audio call will be timestamped for TTFW calculation.
         """
         raise NotImplementedError("This method should be implemented in subclasses.")
+
+    async def on_prompt_update(self, prompt: str) -> None:
+        """
+        Called when a dynamic prompt is set by the prompt_template extension.
+        Subclasses can override this method to apply the new prompt.
+        Default implementation does nothing - subclass should update session if needed.
+        """
+        pass
+
+    def get_prompt(self, config_prompt: str, prompt_params: dict | None = None) -> str:
+        """
+        Get the effective prompt to use, with optional template rendering.
+
+        If prompt_params is provided and config_prompt contains {{placeholder}} patterns,
+        they will be replaced with the corresponding values from prompt_params.
+
+        Args:
+            config_prompt: The prompt template from property.json (may contain {{placeholder}})
+            prompt_params: Optional dict of parameters to render into the template
+
+        Returns:
+            The rendered prompt string
+        """
+        # If dynamic_prompt is set (by prompt_template extension), use it directly
+        if self.dynamic_prompt is not None:
+            return self.dynamic_prompt
+
+        # If no params provided, return config_prompt as-is
+        if not prompt_params:
+            return config_prompt
+
+        # Render template with {{placeholder}} syntax
+        def replace_placeholder(match):
+            key = match.group(1).strip()
+            return str(prompt_params.get(key, match.group(0)))  # Keep original if not found
+
+        pattern = r'\{\{(\w+)\}\}'
+        return re.sub(pattern, replace_placeholder, config_prompt)
 
     @final
     async def send_server_session_ready(self, session: MLLMServerSessionReady) -> None:

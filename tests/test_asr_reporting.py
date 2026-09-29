@@ -17,6 +17,7 @@ from ten_ai_base import (
     ModuleError,
     ModuleErrorCode,
     ModuleErrorVendorInfo,
+    ModuleMetricKey,
     ModuleMetrics,
     ModuleType,
     VENDOR_METADATA_KEY,
@@ -27,6 +28,7 @@ from ten_ai_base.const import (
     DATA_OUT_CONNECTION_STATUS_CHANGED,
     DATA_OUT_METRICS,
 )
+from ten_ai_base.types import ASRBufferConfigModeKeep
 from ten_runtime import Data
 
 
@@ -276,3 +278,58 @@ async def async_test_default_vendor_metadata_does_not_crash():
         already_done="skip",
     )
     ext.ten_env.send_data.assert_awaited_once()
+
+
+def test_dropped_audio_frames_metrics_skips_when_zero(asr_ext):
+    asyncio.run(async_test_dropped_audio_frames_metrics_skips_when_zero(asr_ext))
+
+
+async def async_test_dropped_audio_frames_metrics_skips_when_zero(asr_ext):
+    await asr_ext._send_dropped_audio_frames_metrics()
+    assert asr_ext.sent_data == []
+
+
+def test_discard_mode_counts_and_reports_dropped_frames(asr_ext):
+    asyncio.run(async_test_discard_mode_counts_and_reports_dropped_frames(asr_ext))
+
+
+async def async_test_discard_mode_counts_and_reports_dropped_frames(asr_ext):
+    asr_ext.auto_connect = False
+    asr_ext._connected = False
+
+    await asr_ext._handle_audio_frame(asr_ext.ten_env, _AudioFrame(b"\x00" * 320))
+    await asr_ext._handle_audio_frame(asr_ext.ten_env, _AudioFrame(b"\x01" * 320))
+    assert asr_ext.dropped_audio_frames == 2
+
+    await asr_ext._send_dropped_audio_frames_metrics()
+    assert len(asr_ext.sent_data) == 1
+    assert asr_ext.sent_data[0][0] == DATA_OUT_METRICS
+    assert asr_ext.sent_data[0][1]["metrics"] == {
+        ModuleMetricKey.ASR_DROPPED_AUDIO_FRAMES: 2
+    }
+
+    # Unchanged total must not re-send.
+    await asr_ext._send_dropped_audio_frames_metrics()
+    assert len(asr_ext.sent_data) == 1
+
+
+def test_keep_mode_counts_overflow_evictions(asr_ext):
+    asyncio.run(async_test_keep_mode_counts_overflow_evictions(asr_ext))
+
+
+async def async_test_keep_mode_counts_overflow_evictions(asr_ext):
+    asr_ext.auto_connect = False
+    asr_ext._connected = False
+    asr_ext.buffer_strategy = lambda: ASRBufferConfigModeKeep(byte_limit=320)
+
+    # First frame fits; second forces eviction of the first.
+    await asr_ext._handle_audio_frame(asr_ext.ten_env, _AudioFrame(b"\x00" * 320))
+    assert asr_ext.dropped_audio_frames == 0
+    await asr_ext._handle_audio_frame(asr_ext.ten_env, _AudioFrame(b"\x01" * 320))
+    assert asr_ext.dropped_audio_frames == 1
+    assert asr_ext.buffered_frames.qsize() == 1
+
+    await asr_ext._send_dropped_audio_frames_metrics()
+    assert asr_ext.sent_data[-1][1]["metrics"] == {
+        ModuleMetricKey.ASR_DROPPED_AUDIO_FRAMES: 1
+    }

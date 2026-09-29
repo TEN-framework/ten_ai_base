@@ -88,6 +88,9 @@ class AsyncASRBaseExtension(AsyncExtension):
         self.audio_actual_send_metrics_task: asyncio.Task[None] | None = None
         self.uuid = self._get_uuid()  # Unique identifier for the current final turn
         self.last_reported_audio_duration = 0  # Track audio duration at last report
+        # Frames dropped by base while disconnected (Discard, or Keep overflow).
+        self.dropped_audio_frames = 0
+        self.last_reported_dropped_audio_frames = 0
 
         # States for TTFW calculation
         self.first_audio_time: float | None = (
@@ -218,6 +221,7 @@ class AsyncASRBaseExtension(AsyncExtension):
             self.audio_actual_send_metrics_task = None
 
         await self._send_audio_actual_send_metrics()
+        await self._send_dropped_audio_frames_metrics()
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
         cmd_name = cmd.get_name()
@@ -471,6 +475,23 @@ class AsyncASRBaseExtension(AsyncExtension):
         )
         await self._send_asr_metrics(metrics)
 
+    async def _send_dropped_audio_frames_metrics(self) -> None:
+        """
+        Periodically report frames dropped by the base buffer while disconnected.
+        Skip when the cumulative count has not advanced (including zero).
+        """
+        total = self.dropped_audio_frames
+        if total == self.last_reported_dropped_audio_frames:
+            return
+
+        self.last_reported_dropped_audio_frames = total
+        metrics = ModuleMetrics(
+            module=ModuleType.ASR,
+            vendor=self.vendor(),
+            metrics={ModuleMetricKey.ASR_DROPPED_AUDIO_FRAMES: total},
+        )
+        await self._send_asr_metrics(metrics)
+
     async def _send_asr_metrics(self, metrics: ModuleMetrics) -> None:
         """
         Send metrics related to the ASR module.
@@ -648,11 +669,13 @@ class AsyncASRBaseExtension(AsyncExtension):
                         break
                     discard_frame = await self.buffered_frames.get()
                     self.buffered_frames_size -= len(discard_frame.get_buf())
+                    self.dropped_audio_frames += 1
                 self.buffered_frames.put_nowait(audio_frame)
                 self.buffered_frames_size += len(frame_buf)
             else:
                 # Discard mode
                 self.audio_timeline.add_dropped_audio(len(frame_buf))
+                self.dropped_audio_frames += 1
 
             return
 
@@ -700,13 +723,14 @@ class AsyncASRBaseExtension(AsyncExtension):
 
     async def _send_audio_actual_send_metrics_task(self) -> None:
         """
-        Send audio actual send metrics periodically.
+        Send audio actual send / dropped-frame metrics periodically.
         """
         interval = max(1, self.audio_actual_send_metrics_interval())
 
         while not self.stopped:
             await asyncio.sleep(interval)
             await self._send_audio_actual_send_metrics()
+            await self._send_dropped_audio_frames_metrics()
 
     def _handle_error_in_audio_timeline(self, error: str) -> None:
         """

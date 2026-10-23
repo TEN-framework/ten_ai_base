@@ -1,0 +1,10 @@
+diff --git a/ten_packages/system/ten_runtime_python/pyproject.toml b/ten_packages/system/ten_runtime_python/pyproject.toml
+--- a/ten_packages/system/ten_runtime_python/pyproject.toml
++++ b/ten_packages/system/ten_runtime_python/pyproject.toml
+@@ -20,3 +20,8 @@
+ packages = ["interface/ten_runtime"]
++
++[tool.hatch.build.targets.wheel.force-include]
++"lib/libten_runtime_python.so" = "libten_runtime_python.so"
++"../ten_runtime/lib/libten_runtime.dylib" = "libten_runtime.dylib"
++"../ten_runtime/lib/libten_utils.dylib" = "libten_utils.dylib"

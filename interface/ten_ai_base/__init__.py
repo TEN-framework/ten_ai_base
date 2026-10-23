@@ -18,6 +18,7 @@ from .llm import AsyncLLMBaseExtension
 from .llm_tool import AsyncLLMToolBaseExtension
 from .tts import AsyncTTSBaseExtension
 from .asr import AsyncASRBaseExtension
+from .otel import InstrumentedExtension
 from .chat_memory import (
     ChatMemory,
     AsyncChatMemory,
@@ -77,6 +78,7 @@ __all__ = [
     "AsyncLLMToolBaseExtension",
     "AsyncTTSBaseExtension",
     "AsyncASRBaseExtension",
+    "InstrumentedExtension",
     "ChatMemory",
     "AsyncChatMemory",
     "AsyncQueue",

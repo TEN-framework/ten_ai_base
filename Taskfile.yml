@@ -1,44 +1,47 @@
 version: '3'
 
 tasks:
-  clean:
-    desc: clean up
-    cmds:
-      - find . -type d -name .pytest_cache -exec rm -rf {} \; || true
-      - find . -type d -name __pycache__ -exec rm -rf {} \; || true
-      - find . -type d -name .ten -exec rm -rf {} \; || true
-      - find . -name .coverage -exec rm -f {} \; || true
-
-  install:
-    desc: install dependencies
+  prepare:
+    desc: Install the TEN runtime and sync the uv-managed Python environment
     cmds:
       - tman install --standalone
-      - pip install -r requirements.txt
-      - pip install -r tests/requirements.txt
+      - bash scripts/apply_ten_runtime_python_patch.sh
+      - uv sync
+
+  install:
+    desc: Alias for prepare
+    cmds:
+      - task: prepare
+
+  clean:
+    desc: Remove generated TEN and Python test artifacts
+    cmds:
+      - find . -type d -name .pytest_cache -prune -exec rm -rf {} +
+      - find . -type d -name __pycache__ -prune -exec rm -rf {} +
+      - find . -type d -name .ten -prune -exec rm -rf {} +
+      - find . -name .coverage -delete
 
   lint:
-    desc: lint codes
-    env:
-      PYTHONPATH: "{{.USER_WORKING_DIR}}/.ten/app:{{.USER_WORKING_DIR}}/.ten/app/ten_packages/system/ten_runtime_python/lib:{{.USER_WORKING_DIR}}/.ten/app/ten_packages/system/ten_runtime_python/interface"
+    desc: Run Ruff against the OTel package and its contract tests
     cmds:
-      -  pylint ./interface/ten_ai_base/*.py {{ .CLI_ARGS }}
+      - uv run ruff check interface/ten_ai_base/otel tests/test_otel.py --ignore BLE001
 
   test:
-    desc: run tests
+    desc: Run standalone and integration tests
     cmds:
       - task: test-standalone
       - task: test-integration
 
   test-standalone:
-    desc: run standalone tests
-    cmds: 
-      - ./tests/bin/start {{ .CLI_ARGS }}
+    desc: Run the package's standalone tests
+    cmds:
+      - uv run ./tests/bin/start {{ .CLI_ARGS }}
 
   test-integration:
-    desc: run integration tests
+    desc: Run all integration test packages
     vars:
       EXTENSIONS:
-        sh: 'find integration_tests -type d -exec test -d "{}/tests" \; -print'
+        sh: find integration_tests -type d -exec test -d "{}/tests" \; -print
     cmds:
       - for: { var: EXTENSIONS }
         task: test-extension
@@ -46,10 +49,8 @@ tasks:
           EXTENSION: '{{ .ITEM }}'
 
   test-extension:
-    desc: run standalone testing of one single extension
+    desc: Run one integration test package
     vars:
-      EXTENSION: '{{.EXTENSION| default "test_config_python"}}'
-    env:
-      PYTHONPATH: "{{.USER_WORKING_DIR}}/interface:{{.USER_WORKING_DIR}}"
+      EXTENSION: '{{.EXTENSION | default "integration_tests/test_config_python"}}'
     cmds:
-      - cd {{.EXTENSION}} && tman -y install --standalone && ./tests/bin/start {{ .CLI_ARGS }}
+      - cd {{.EXTENSION}} && tman install --standalone && uv run ./tests/bin/start {{ .CLI_ARGS }}

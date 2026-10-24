@@ -84,54 +84,15 @@ class AsyncTTS2HttpClient:
             return None
         return (self._first_audio_received_ns - self._first_text_sent_ns) // 1_000_000
 
-    async def trace_ttfb(self, event_name: str, info: dict[str, Any]) -> None:
-        """httpcore emits this after acquiring/connecting the socket."""
-        if event_name in (
-            "http11.send_request_body.started",
-            "http2.send_request_body.started",
-        ):
-            self.record_transport_text_sent()
-
     def observe_http_ttfb(self, client) -> None:
-        """Observe HTTP body send/receive without changing buffering or decoding."""
-        import httpx
+        """Connect this client's timing state to its HTTPX transport."""
+        from .httpx_tts_timing import observe_http_ttfb
 
-        timing = self
-
-        class AudioResponseStream(httpx.AsyncByteStream):
-            def __init__(self, stream) -> None:
-                self.stream = stream
-
-            async def __aiter__(self):
-                async for chunk in self.stream:
-                    if chunk:
-                        timing.record_audio_received()
-                    yield chunk
-
-            async def aclose(self) -> None:
-                await self.stream.aclose()
-
-        async def request_hook(request) -> None:
-            previous_trace = request.extensions.get("trace")
-
-            async def trace(event_name, info) -> None:
-                await timing.trace_ttfb(event_name, info)
-                if previous_trace is not None:
-                    await previous_trace(event_name, info)
-
-            request.extensions["trace"] = trace
-
-        async def response_hook(response) -> None:
-            # SSE streams can begin with status/control events, not audio.
-            # Their protocol decoder records the first audio-bearing event.
-            content_type = response.headers.get("content-type", "")
-            if response.status_code == 200 and not any(
-                kind in content_type for kind in ("text/event-stream",)
-            ):
-                response.stream = AudioResponseStream(response.stream)
-
-        client.event_hooks["request"].append(request_hook)
-        client.event_hooks["response"].append(response_hook)
+        observe_http_ttfb(
+            client,
+            self.record_transport_text_sent,
+            self.record_audio_received,
+        )
 
     @abstractmethod
     async def clean(self) -> None:
@@ -174,9 +135,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
         self.current_request_finished: bool = False
         self.total_audio_bytes: int = 0
         self.first_chunk: bool = False
-        self.recorder_map: dict[str, PCMWriter] = (
-            {}
-        )  # Store PCMWriter instances for different request_ids
+        self.recorder_map: dict[
+            str, PCMWriter
+        ] = {}  # Store PCMWriter instances for different request_ids
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         try:

@@ -10,12 +10,17 @@ task prepare
 ```
 
 The command installs TEN packages into `.ten` and creates or updates the local
-`.venv` from `pyproject.toml`. Run checks through the same managed environment
+`dev/.venv` from `dev/pyproject.toml`. Run checks through the same managed environment
 with `task lint` and `task test`.
 
-The patched TEN Python runtime is installed into `.venv` as a local development
+The patched TEN Python runtime is installed into `dev/.venv` as a local development
 dependency, including its native libraries. After `task prepare`, run package
-tests with `uv run pytest tests`; no `PYTHONPATH` configuration is needed.
+tests with `uv run --project dev pytest tests`; no `PYTHONPATH` configuration is needed.
+
+The root `pyproject.toml` declares the reusable package only. Local sources and
+standalone development tools belong to the separate `dev` project. A parent uv
+workspace can use `ten_ai_base` as a member and configure its own TEN runtime
+source without requiring this repository's `.ten` directory.
 
 ## TTS request tracing
 

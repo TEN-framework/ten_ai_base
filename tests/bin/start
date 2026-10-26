@@ -17,4 +17,4 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 # Refer to https://github.com/pytorch/pytorch/issues/102360?from_wecom=1#issuecomment-1708989096
 
 go test ./tests
-uv run pytest tests/ "$@"
+uv run --project dev pytest tests/ "$@"

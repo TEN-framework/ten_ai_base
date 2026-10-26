@@ -6,7 +6,7 @@ tasks:
     cmds:
       - tman install --standalone
       - bash scripts/apply_ten_runtime_python_patch.sh
-      - uv sync
+      - uv sync --project dev
 
   install:
     desc: Alias for prepare
@@ -24,7 +24,7 @@ tasks:
   lint:
     desc: Run Ruff against the OTel package and its contract tests
     cmds:
-      - uv run ruff check interface/ten_ai_base/otel tests/test_otel.py tests/test_tts2_tracing.py
+      - uv run --project dev ruff check interface/ten_ai_base/otel tests/test_otel.py tests/test_tts2_tracing.py
 
   test:
     desc: Run standalone and integration tests
@@ -35,7 +35,7 @@ tasks:
   test-standalone:
     desc: Run the package's standalone tests
     cmds:
-      - uv run ./tests/bin/start {{ .CLI_ARGS }}
+      - ./tests/bin/start {{ .CLI_ARGS }}
 
   test-integration:
     desc: Run all integration test packages
@@ -53,4 +53,4 @@ tasks:
     vars:
       EXTENSION: '{{.EXTENSION | default "integration_tests/test_config_python"}}'
     cmds:
-      - cd {{.EXTENSION}} && tman install --standalone && uv run ./tests/bin/start {{ .CLI_ARGS }}
+      - cd {{.EXTENSION}} && tman install --standalone && uv run --project {{.ROOT_DIR | shellQuote}}/dev ./tests/bin/start {{ .CLI_ARGS }}

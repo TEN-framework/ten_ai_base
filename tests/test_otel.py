@@ -89,3 +89,62 @@ def test_instrumented_extension_attaches_inbound_and_injects_outbound_context() 
         trace.get_current_span(outbound_context).get_span_context().trace_id
         == span.get_span_context().trace_id
     )
+
+
+def test_tts2_command_propagates_context_and_restores_caller():
+    import asyncio
+
+    from ten_ai_base.tts2 import AsyncTTS2BaseExtension
+    from ten_runtime import Cmd, Data, StatusCode
+
+    class TTS(AsyncTTS2BaseExtension):
+        def vendor(self):
+            return "test"
+
+        def synthesize_audio_sample_rate(self):
+            return 16000
+
+        async def request_tts(self, text):
+            raise AssertionError("Unexpected synthesis request")
+
+        async def update_configs(self, configs):
+            data = Data.create("configured")
+            data.set_property_string("model", configs["model"])
+            await self.ten_env.send_data(data)
+
+    class Env(_Env):
+        def __init__(self):
+            super().__init__()
+            self.results = []
+
+        def log_info(self, message):
+            pass
+
+        async def return_result(self, result, options=None):
+            self.results.append(result)
+
+    async def run():
+        extension = TTS("test")
+        env = Env()
+        await extension._wrapper_on_init(env)
+        cmd = Cmd.create("update_configs")
+        cmd.set_property_string("model", "test-model")
+        parent = trace.NonRecordingSpan(
+            trace.SpanContext(123, 456, False, trace.TraceFlags(1))
+        )
+        with trace.use_span(parent):
+            inject_otel_context(cmd)
+        caller = trace.get_current_span().get_span_context()
+        await extension._wrapper_on_cmd(env, cmd)
+        assert trace.get_current_span().get_span_context() == caller
+        assert len(env.sent) == len(env.results) == 1
+        assert env.sent[0].get_property_string("model")[0] == "test-model"
+        assert env.results[0].get_status_code() == StatusCode.OK
+        for message in [env.sent[0], env.results[0]]:
+            propagated = trace.get_current_span(
+                extract_otel_context(message)
+            ).get_span_context()
+            assert propagated.trace_id == 123
+            assert propagated.span_id == 456
+
+    asyncio.run(run())

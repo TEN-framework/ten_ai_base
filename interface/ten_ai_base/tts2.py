@@ -12,6 +12,9 @@ import traceback
 from typing import final
 import uuid
 
+from opentelemetry import context as otel_context, trace
+
+from .otel.propagation import use_otel_context
 from .helper import AsyncQueue
 from .features import send_provide_features
 from .message import (
@@ -26,8 +29,8 @@ from .message import (
 )
 
 from .struct import TTSFlush, TTSTextInput, TTSTextResult
+from .otel import InstrumentedExtension
 from ten_runtime import (
-    AsyncExtension,
     Data,
 )
 from ten_runtime.async_ten_env import AsyncTenEnv
@@ -65,7 +68,7 @@ class RequestState(Enum):
     COMPLETED = "completed"
 
 
-class AsyncTTS2BaseExtension(AsyncExtension, ABC):
+class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
     """
     Base class for implementing a Text-to-Speech Extension.
     This class provides a basic implementation for converting text to speech.
@@ -119,6 +122,61 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
         self.current_audio_request_id = None
         self._connection_status = ModuleConnectionStatus.DISCONNECTED
         self._connection_lock = asyncio.Lock()
+        # A queue consumer does not inherit the producer's contextvars.
+        self._request_traces: dict[
+            str, tuple[trace.Span | None, otel_context.Context]
+        ] = {}
+
+    def _begin_request_trace(self, request_id: str) -> None:
+        parent = otel_context.Context()
+        span = None
+        try:
+            parent = otel_context.get_current()
+            span = trace.get_tracer("ten_ai_base.tts2").start_span(
+                "tts.request",
+                context=parent,
+                attributes={"tts.request_id": request_id},
+            )
+            # No SDK provider: keep the incoming span and baggage intact.
+            if span.get_span_context().is_valid:
+                parent = trace.set_span_in_context(span, parent)
+        except Exception:  # noqa: BLE001, S110 - tracing is best-effort.
+            pass
+        self._request_traces[request_id] = (span, parent)
+
+    def _request_context(self, request_id: str | None) -> otel_context.Context:
+        request = self._request_traces.get(request_id)
+        if request is not None:
+            return request[1]
+        try:
+            return otel_context.get_current()
+        except Exception:  # noqa: BLE001 - tracing is best-effort.
+            return otel_context.Context()
+
+    def _end_request_trace(self, request_id: str, outcome: str) -> None:
+        request = self._request_traces.pop(request_id, None)
+        if request is None or request[0] is None:
+            return
+        span = request[0]
+        try:
+            span.set_attribute("tts.request.outcome", outcome)
+            if outcome == "error":
+                span.set_status(trace.StatusCode.ERROR)
+        except Exception:  # noqa: BLE001, S110 - tracing is best-effort.
+            pass
+        finally:
+            try:
+                span.end()
+            except Exception:  # noqa: BLE001, S110 - tracing is best-effort.
+                pass
+
+    def _end_request_traces(self, outcome: str) -> None:
+        for request_id in list(self._request_traces):
+            self._end_request_trace(request_id, outcome)
+
+    async def _send_request_data(self, data: Data, request_id: str | None) -> None:
+        with use_otel_context(self._request_context(request_id)):
+            await self.ten_env.send_data(data)
 
     def _can_transition_to(self, request_id: str, new_state: RequestState) -> bool:
         """Check if state transition is valid."""
@@ -198,17 +256,23 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             self.loop_task = self.loop.create_task(self._process_input_queue(ten_env))
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
-        # send laster time before stop
-        await self.send_usage_metrics()
-        await self.on_disconnected(code=0, message="stopped")
-        await super().on_stop(ten_env)
-        await self._flush_input_items()
-        if self.loop_task:
-            self.loop_task.cancel()
-        await self.input_queue.put(None)  # Signal the loop to stop processing
+        try:
+            # send laster time before stop
+            await self.send_usage_metrics()
+            await self.on_disconnected(code=0, message="stopped")
+            await super().on_stop(ten_env)
+            await self._flush_input_items()
+            if self.loop_task:
+                self.loop_task.cancel()
+            await self.input_queue.put(None)  # Signal the loop to stop processing
+        finally:
+            self._end_request_traces("interrupted")
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
-        await super().on_deinit(ten_env)
+        try:
+            await super().on_deinit(ten_env)
+        finally:
+            self._end_request_traces("interrupted")
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
         cmd_name = cmd.get_name()
@@ -269,6 +333,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                     self._transition_state(
                         t.request_id, RequestState.QUEUED, "request received"
                     )
+                    self._begin_request_trace(t.request_id)
                     if t.metadata:
                         self.metadatas[t.request_id] = t.metadata
 
@@ -322,41 +387,45 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
 
     async def _flush_input_items(self):
         """Flushes the queue and cancels the current task."""
-        # Flush the queue
-        await self.input_queue.flush()
+        try:
+            # Flush the queue
+            await self.input_queue.flush()
 
-        # Clear buffered messages from different request_ids
-        self._pending_messages.clear()
+            # Clear buffered messages from different request_ids
+            self._pending_messages.clear()
 
-        # Cancel the current task if one is running
-        if self._processing_request_id:
-            current_id = self._processing_request_id
-            current_state = self.request_states.get(current_id)
+            # Cancel the current task if one is running
+            if self._processing_request_id:
+                current_id = self._processing_request_id
+                current_state = self.request_states.get(current_id)
 
-            if current_state and current_state != RequestState.COMPLETED:
-                self.ten_env.log_info(
-                    f"Cancelling current request {current_id} in state {current_state.value}",
-                    category=LOG_CATEGORY_KEY_POINT,
-                )
+                if current_state and current_state != RequestState.COMPLETED:
+                    self.ten_env.log_info(
+                        f"Cancelling current request {current_id} in state {current_state.value}",
+                        category=LOG_CATEGORY_KEY_POINT,
+                    )
 
-                await self._cancel_current_task()
+                    await self._cancel_current_task()
 
-                # Call cancel_tts() - subclass should send audio_end with reason=INTERRUPTED
-                # Note: Subclass should NOT call finish_request(), state cleanup is handled below
-                await self.cancel_tts()
+                    # Call cancel_tts() - subclass should send audio_end with reason=INTERRUPTED
+                    # Note: Subclass should NOT call finish_request(), state cleanup is handled below
+                    with use_otel_context(self._request_context(current_id)):
+                        await self.cancel_tts()
 
-        # Clear all request states and metadata
-        # This handles both the current request and any queued requests
-        self.request_states.clear()
-        self.metadatas.clear()
+            # Clear all request states and metadata
+            # This handles both the current request and any queued requests
+            self.request_states.clear()
+            self.metadatas.clear()
 
-        # Reset processing request ID and current audio request ID
-        self._processing_request_id = None
-        self.current_audio_request_id = None
+            # Reset processing request ID and current audio request ID
+            self._processing_request_id = None
+            self.current_audio_request_id = None
 
-        self.ten_env.log_debug(
-            "Cleared all request states, metadata, and pending messages after flush"
-        )
+            self.ten_env.log_debug(
+                "Cleared all request states, metadata, and pending messages after flush"
+            )
+        finally:
+            self._end_request_traces("interrupted")
 
     async def _cancel_current_task(self) -> None:
         """Called when the TTS request is cancelled."""
@@ -425,13 +494,16 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                         RequestState.FINALIZING,
                         "received text_input_end, generating final audio",
                     )
-                await self.request_tts(t)
+                with use_otel_context(self._request_context(t.request_id)):
+                    await self.request_tts(t)
 
             except asyncio.CancelledError:
+                self._end_request_trace(t.request_id, "interrupted")
                 ten_env.log_info(
                     f"Task cancelled: {t.text}", category=LOG_CATEGORY_TRANSCRIPTS
                 )
             except Exception as err:
+                self._end_request_trace(t.request_id, "error")
                 ten_env.log_error(
                     f"Task failed: {t.text}, err: {traceback.format_exc()}",
                     category=LOG_CATEGORY_TRANSCRIPTS,
@@ -475,14 +547,15 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
                 buff = f.lock_buf()
                 buff[:] = combined_data
                 f.unlock_buf(buff)
-                await self.ten_env.send_audio_frame(f)
+                with use_otel_context(self._request_context(self.current_audio_request_id)):
+                    await self.ten_env.send_audio_frame(f)
         except Exception as e:
             self.ten_env.log_error(f"error send audio frame, {traceback.format_exc()}")
 
     async def send_tts_text_result(self, t: TTSTextResult) -> None:
         data = Data.create(DATA_TTS_TEXT_RESULT)
         data.set_property_from_json("", t.model_dump_json())
-        await self.ten_env.send_data(data)
+        await self._send_request_data(data, t.request_id)
 
     async def send_tts_ttfb_metrics(
         self,
@@ -527,7 +600,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             f"tts_audio_start:  {json_data} of request_id: {request_id}",
             category=LOG_CATEGORY_KEY_POINT,
         )
-        await self.ten_env.send_data(data)
+        await self._send_request_data(data, request_id)
 
     async def send_tts_audio_end(
         self,
@@ -554,7 +627,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             f"tts_audio_end:  {json_data} of request_id: {request_id}",
             category=LOG_CATEGORY_KEY_POINT,
         )
-        await self.ten_env.send_data(data)
+        await self._send_request_data(data, request_id)
 
         # Reset current_audio_request_id (audio phase complete)
         if self.current_audio_request_id == request_id:
@@ -604,7 +677,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             f"tts_error:  msg: 	{json_data}",
             category=LOG_CATEGORY_KEY_POINT,
         )
-        await self.ten_env.send_data(error_data)
+        await self._send_request_data(error_data, request_id)
 
     async def send_char_audio_metrics(self, request_id: str = ""):
         await self.send_usage_metrics(request_id)
@@ -639,7 +712,7 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         data.set_property_from_json(None, metrics.model_dump_json())
-        await self.ten_env.send_data(data)
+        await self._send_request_data(data, request_id)
 
     async def send_tts_request_metrics(
         self,
@@ -854,75 +927,81 @@ class AsyncTTS2BaseExtension(AsyncExtension, ABC):
             reason: Why the request is ending (default: TTSAudioEndReason.REQUEST_END)
             error: Optional error to report before finishing
         """
-        # Send error message if provided
-        if error:
-            await self.send_tts_error(request_id, error)
-            self.ten_env.log_info(
-                f"Finishing request {request_id} with error: {error.message}",
-                category=LOG_CATEGORY_KEY_POINT,
-            )
-
-        # Transition to COMPLETED state
-        reason_str = f"request finished with reason={reason.value}"
-        self._transition_state(request_id, RequestState.COMPLETED, reason_str)
-
-        # Keep the COMPLETED state for observability
-        # State will be cleaned up by:
-        # 1. _flush_input_items() when flush is called
-        # 2. _cleanup_completed_states() when starting a new request (to prevent unbounded growth)
-
-        # Defensive reset of current_audio_request_id for error paths
-        if self.current_audio_request_id == request_id:
-            self.current_audio_request_id = None
-
-        # Handle request completion and buffered messages release
-        # Only process if this is the currently processing request
-        if self._processing_request_id == request_id:
-            # IMPORTANT: Reset _processing_request_id BEFORE releasing buffered messages
-            # This ensures that when buffered messages are put back to queue and immediately
-            # processed by _process_input_queue, they won't be buffered again
-            self._processing_request_id = None
-
-            # Release buffered messages from other requests (for interleaved requests)
-            # Only release one request at a time to maintain order
-            if self._pending_messages:
-                # Find the next request_id with buffered messages
-                next_request_ids = list(self._pending_messages.keys())
+        try:
+            # Send error message if provided
+            if error:
+                await self.send_tts_error(request_id, error)
                 self.ten_env.log_info(
-                    f"Request {request_id} finished, _pending_messages keys (in order): {next_request_ids}, "
-                    f"will release first: {next_request_ids[0] if next_request_ids else 'None'}",
+                    f"Finishing request {request_id} with error: {error.message}",
                     category=LOG_CATEGORY_KEY_POINT,
                 )
-                if next_request_ids:
-                    next_request_id = next_request_ids[0]
-                    buffered_messages = self._pending_messages.pop(next_request_id)
 
+            # Transition to COMPLETED state
+            reason_str = f"request finished with reason={reason.value}"
+            self._transition_state(request_id, RequestState.COMPLETED, reason_str)
+
+            # Keep the COMPLETED state for observability
+            # State will be cleaned up by:
+            # 1. _flush_input_items() when flush is called
+            # 2. _cleanup_completed_states() when starting a new request (to prevent unbounded growth)
+
+            # Defensive reset of current_audio_request_id for error paths
+            if self.current_audio_request_id == request_id:
+                self.current_audio_request_id = None
+
+            # Handle request completion and buffered messages release
+            # Only process if this is the currently processing request
+            if self._processing_request_id == request_id:
+                # IMPORTANT: Reset _processing_request_id BEFORE releasing buffered messages
+                # This ensures that when buffered messages are put back to queue and immediately
+                # processed by _process_input_queue, they won't be buffered again
+                self._processing_request_id = None
+
+                # Release buffered messages from other requests (for interleaved requests)
+                # Only release one request at a time to maintain order
+                if self._pending_messages:
+                    # Find the next request_id with buffered messages
+                    next_request_ids = list(self._pending_messages.keys())
                     self.ten_env.log_info(
-                        f"Request {request_id} finished, releasing buffered request {next_request_id} "
-                        f"with {len(buffered_messages)} messages. "
-                        f"Remaining pending messages keys: {list(self._pending_messages.keys())}",
+                        f"Request {request_id} finished, _pending_messages keys (in order): {next_request_ids}, "
+                        f"will release first: {next_request_ids[0] if next_request_ids else 'None'}",
                         category=LOG_CATEGORY_KEY_POINT,
                     )
+                    if next_request_ids:
+                        next_request_id = next_request_ids[0]
+                        buffered_messages = self._pending_messages.pop(next_request_id)
 
-                    # IMPORTANT: Set _processing_request_id BEFORE putting messages back to queue
-                    # This prevents race condition where _process_input_queue processes messages
-                    # before _processing_request_id is set, which could cause incorrect buffering
-                    self._processing_request_id = next_request_id
-                    self.ten_env.log_debug(
-                        f"Set _processing_request_id to {next_request_id} before releasing messages"
-                    )
+                        self.ten_env.log_info(
+                            f"Request {request_id} finished, releasing buffered request {next_request_id} "
+                            f"with {len(buffered_messages)} messages. "
+                            f"Remaining pending messages keys: {list(self._pending_messages.keys())}",
+                            category=LOG_CATEGORY_KEY_POINT,
+                        )
 
-                    # Put buffered messages back to queue (in order)
-                    # Use _put_lock to prevent race condition with on_data
-                    # This ensures all buffered messages are enqueued atomically
-                    async with self._put_lock:
-                        for msg in buffered_messages:
-                            await self.input_queue.put(msg)
-                            self.ten_env.log_debug(
-                                f"Put buffered message back to queue: request_id={msg.request_id}, "
-                                f"text={msg.text[:50]}...",
-                                category=LOG_CATEGORY_TRANSCRIPTS,
-                            )
+                        # IMPORTANT: Set _processing_request_id BEFORE putting messages back to queue
+                        # This prevents race condition where _process_input_queue processes messages
+                        # before _processing_request_id is set, which could cause incorrect buffering
+                        self._processing_request_id = next_request_id
+                        self.ten_env.log_debug(
+                            f"Set _processing_request_id to {next_request_id} before releasing messages"
+                        )
+
+                        # Put buffered messages back to queue (in order)
+                        # Use _put_lock to prevent race condition with on_data
+                        # This ensures all buffered messages are enqueued atomically
+                        async with self._put_lock:
+                            for msg in buffered_messages:
+                                await self.input_queue.put(msg)
+                                self.ten_env.log_debug(
+                                    f"Put buffered message back to queue: request_id={msg.request_id}, "
+                                    f"text={msg.text[:50]}...",
+                                    category=LOG_CATEGORY_TRANSCRIPTS,
+                                )
+        finally:
+            outcome = "error" if error or reason == TTSAudioEndReason.ERROR else (
+                "interrupted" if reason == TTSAudioEndReason.INTERRUPTED else "completed"
+            )
+            self._end_request_trace(request_id, outcome)
 
     @abstractmethod
     def vendor(self) -> str:

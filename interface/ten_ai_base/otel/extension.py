@@ -1,10 +1,10 @@
-# ABOUTME: Adds OTel setup and context propagation to AsyncExtension callbacks.
+# ABOUTME: Propagates OTel context through AsyncExtension callbacks.
 # ABOUTME: Leaves business callback names and TEN environment usage unchanged.
 
 from typing import Any, cast
 
 from opentelemetry import trace
-from opentelemetry.context import Context, attach, detach
+from opentelemetry.context import Context
 from ten_runtime import (
     AsyncExtension,
     AsyncTenEnv,
@@ -14,7 +14,7 @@ from ten_runtime import (
     VideoFrame,
 )
 
-from .propagation import extract_otel_context
+from .propagation import extract_otel_context, use_otel_context
 from .ten_env import InstrumentedTenEnv
 
 
@@ -39,8 +39,10 @@ class InstrumentedExtension(AsyncExtension):
         await super()._wrapper_on_stop(self._instrument(async_ten_env))
 
     async def _wrapper_on_deinit(self, async_ten_env: AsyncTenEnv) -> None:
-        await super()._wrapper_on_deinit(self._instrument(async_ten_env))
-        self.end_root_span()
+        try:
+            await super()._wrapper_on_deinit(self._instrument(async_ten_env))
+        finally:
+            self.end_root_span()
 
     async def _wrapper_on_cmd(self, async_ten_env: AsyncTenEnv, cmd: Cmd) -> None:
         await self._run_with_message_context(
@@ -85,13 +87,13 @@ class InstrumentedExtension(AsyncExtension):
         callback: Any,
     ) -> None:
         context = extract_otel_context(message)
-        if not trace.get_current_span(context).get_span_context().is_valid:
-            context = self._otel_root_context or context
-        token = attach(context)
         try:
+            if not trace.get_current_span(context).get_span_context().is_valid:
+                context = self._otel_root_context or context
+        except Exception:  # noqa: BLE001, S110 - tracing must not stop application work.
+            pass
+        with use_otel_context(context):
             await callback(self._instrument(ten_env), message)
-        finally:
-            detach(token)
 
     def start_root_span(
         self,
@@ -102,16 +104,21 @@ class InstrumentedExtension(AsyncExtension):
         """Start the extension lifecycle span used as a fallback parent."""
         if self._otel_root_span is not None:
             return self._otel_root_span
-        span = trace.get_tracer(self.otel_instrumentation_name).start_span(
-            name,
-            context=Context(),
-            record_exception=False,
-            set_status_on_exception=False,
-        )
-        if attributes:
-            span.set_attributes(attributes)
-        self._otel_root_span = span
-        self._otel_root_context = trace.set_span_in_context(span)
+        span = trace.INVALID_SPAN
+        try:
+            span = trace.get_tracer(self.otel_instrumentation_name).start_span(
+                name,
+                context=Context(),
+                record_exception=False,
+                set_status_on_exception=False,
+            )
+            self._otel_root_span = span
+            if span.get_span_context().is_valid:
+                self._otel_root_context = trace.set_span_in_context(span, Context())
+            if attributes:
+                span.set_attributes(attributes)
+        except Exception:  # noqa: BLE001, S110 - tracing must not stop application work.
+            pass
         return span
 
     def end_root_span(self, *, attributes: dict[str, Any] | None = None) -> None:
@@ -119,8 +126,15 @@ class InstrumentedExtension(AsyncExtension):
         span = self._otel_root_span
         if span is None:
             return
-        if attributes:
-            span.set_attributes(attributes)
-        span.end()
         self._otel_root_span = None
         self._otel_root_context = None
+        try:
+            if attributes:
+                span.set_attributes(attributes)
+        except Exception:  # noqa: BLE001, S110 - tracing must not stop application work.
+            pass
+        finally:
+            try:
+                span.end()
+            except Exception:  # noqa: BLE001, S110 - tracing must not stop application work.
+                pass

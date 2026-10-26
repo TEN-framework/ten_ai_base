@@ -24,7 +24,7 @@ tasks:
   lint:
     desc: Run Ruff against the OTel package and its contract tests
     cmds:
-      - uv run ruff check interface/ten_ai_base/otel tests/test_otel.py --ignore BLE001
+      - uv run ruff check interface/ten_ai_base/otel tests/test_otel.py tests/test_tts2_tracing.py
 
   test:
     desc: Run standalone and integration tests

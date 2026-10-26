@@ -70,6 +70,8 @@ def _create_fake_ten_runtime_modules() -> dict[str, types.ModuleType]:
     ten_runtime.Cmd = Cmd
     ten_runtime.CmdResult = CmdResult
     ten_runtime.StatusCode = StatusCode
+    ten_runtime.VideoFrame = type("VideoFrame", (), {})
+    ten_runtime.SendOptions = type("SendOptions", (), {})
 
     async_ten_env_module = types.ModuleType("ten_runtime.async_ten_env")
     async_ten_env_module.AsyncTenEnv = AsyncTenEnv
@@ -122,6 +124,10 @@ def _load_tts2_http_symbols():
         f"{package_name}.helper",
         f"{package_name}.const",
         f"{package_name}.utils",
+        f"{package_name}.otel",
+        f"{package_name}.otel.extension",
+        f"{package_name}.otel.propagation",
+        f"{package_name}.otel.ten_env",
         f"{package_name}.tts2",
         f"{package_name}.tts2_http",
     ]
@@ -133,6 +139,9 @@ def _load_tts2_http_symbols():
     sys.modules[package_name] = package
 
     try:
+        for name in package_module_names:
+            if name.startswith(f"{package_name}.otel"):
+                sys.modules.pop(name, None)
         for module in [
             "types",
             "message",

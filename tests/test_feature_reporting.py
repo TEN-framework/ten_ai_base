@@ -85,6 +85,8 @@ def _create_fake_ten_runtime_modules() -> dict[str, types.ModuleType]:
     ten_runtime.Cmd = Cmd
     ten_runtime.CmdResult = CmdResult
     ten_runtime.StatusCode = StatusCode
+    ten_runtime.VideoFrame = type("VideoFrame", (), {})
+    ten_runtime.SendOptions = type("SendOptions", (), {})
 
     async_ten_env_module = types.ModuleType("ten_runtime.async_ten_env")
     async_ten_env_module.AsyncTenEnv = AsyncTenEnv
@@ -143,6 +145,10 @@ def _load_feature_reporting_symbols():
         f"{package_name}.utils",
         f"{package_name}.features",
         f"{package_name}.asr",
+        f"{package_name}.otel",
+        f"{package_name}.otel.extension",
+        f"{package_name}.otel.propagation",
+        f"{package_name}.otel.ten_env",
         f"{package_name}.tts2",
     ]
     original_package_modules = {
@@ -153,6 +159,9 @@ def _load_feature_reporting_symbols():
     sys.modules[package_name] = package
 
     try:
+        for name in package_module_names:
+            if name.startswith(f"{package_name}.otel"):
+                sys.modules.pop(name, None)
         for module in [
             "const",
             "message",

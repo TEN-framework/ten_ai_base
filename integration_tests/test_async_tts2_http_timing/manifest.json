@@ -1,9 +1,0 @@
-{
-  "type": "extension",
-  "name": "test_async_tts2_http_timing",
-  "version": "0.1.0",
-  "dependencies": [
-    {"type": "system", "name": "ten_runtime_python", "version": "0.11"}
-  ],
-  "api": {"interface": [{"import_uri": "../../system/ten_ai_base/api/tts-interface.json"}]}
-}

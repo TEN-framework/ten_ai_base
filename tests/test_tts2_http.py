@@ -227,6 +227,7 @@ class FakeConfig(AsyncTTS2HttpConfig):
 
 class FakeHttpClient(AsyncTTS2HttpClient):
     def __init__(self, responses, extra_metadata=None) -> None:
+        super().__init__()
         self.responses = responses
         self.extra_metadata = extra_metadata or {"provider": "test"}
         self.cancelled = False

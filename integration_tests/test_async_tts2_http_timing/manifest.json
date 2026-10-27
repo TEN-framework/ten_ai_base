@@ -5,5 +5,5 @@
   "dependencies": [
     {"type": "system", "name": "ten_runtime_python", "version": "0.11"}
   ],
-  "api": {"interface": [{"import_uri": "../../system/ten_ai_base/api/tts-interface.json"}]}
+  "api": {}
 }

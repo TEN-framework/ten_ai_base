@@ -4,10 +4,11 @@ version = "0.7.63"
 description = "TEN Framework base AI module"
 requires-python = ">=3.10"
 dependencies = [
-  "aiofiles>=25.1.0",
-  "pydantic>=2",
-  "typing-extensions>=4.15.0",
-  "opentelemetry-api>=1.39.0",
+    "aiofiles>=25.1.0",
+    "httpx>=0.27",
+    "pydantic>=2",
+    "typing-extensions>=4.15.0",
+    "opentelemetry-api>=1.39.0",
 ]
 
 [build-system]
@@ -17,3 +18,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 ignore-vcs = true
 packages = ["interface/ten_ai_base"]
+
+[tool.pytest.ini_options]
+markers = ["api: External TTS API contract"]

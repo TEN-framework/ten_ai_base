@@ -4,8 +4,6 @@ set -e
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
-export PYTHONPATH=.ten/app/ten_packages/system/ten_ai_base/interface:.ten/app:.ten/app/ten_packages/system/ten_runtime_python/lib:.ten/app/ten_packages/system/ten_runtime_python/interface
-
 # If the Python app imports some modules that are compiled with a different
 # version of libstdc++ (ex: PyTorch), the Python app may encounter confusing
 # errors. To solve this problem, we can preload the correct version of
@@ -19,4 +17,4 @@ export PYTHONPATH=.ten/app/ten_packages/system/ten_ai_base/interface:.ten/app:.t
 # Refer to https://github.com/pytorch/pytorch/issues/102360?from_wecom=1#issuecomment-1708989096
 
 go test ./tests
-pytest tests/ "$@"
+uv run --project dev pytest tests/ "$@"

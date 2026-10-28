@@ -1,0 +1,25 @@
+# ABOUTME: Owns the standalone development environment for ten_ai_base.
+# ABOUTME: Keeps local TEN runtime sources out of the reusable package metadata.
+
+[project]
+name = "ten-ai-base-dev"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+  "ten-ai-base",
+  "ten-runtime-python",
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.23.0",
+  "opentelemetry-sdk>=1.39.0",
+  "ruff>=0.8.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+ten-ai-base = { path = "..", editable = true }
+ten-runtime-python = { path = "../.ten/app/ten_packages/system/ten_runtime_python" }
+
+[tool.uv.workspace]
+members = []

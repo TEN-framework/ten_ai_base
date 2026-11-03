@@ -18,6 +18,7 @@ class TimingTester(ExtensionTester):
         super().__init__()
         self.reported = []
         self.audio = False
+        self.audio_end = False
         self.timer = None
 
     def on_start(self, env):
@@ -53,6 +54,9 @@ class TimingTester(ExtensionTester):
         if data.get_name() == "metrics" and "ttfb" in payload.get("metrics", {}):
             self.reported.append(payload["metrics"]["ttfb"])
             self.complete(env)
+        if data.get_name() == "tts_audio_end":
+            self.audio_end = True
+            self.complete(env)
 
     def on_audio_frame(self, env, frame):
         if frame.get_buf():
@@ -60,20 +64,26 @@ class TimingTester(ExtensionTester):
             self.complete(env)
 
     def complete(self, env):
-        if self.audio and self.reported:
+        if self.audio and self.reported and self.audio_end:
             self.timer.cancel()
             env.stop_test()
 
 
-@pytest.mark.parametrize("response_format", ["raw", "json"])
-def test_ttfb_includes_connection_but_excludes_tail_audio_wait(response_format):
+@pytest.mark.parametrize(
+    "response_format,audio_start_delay_ms",
+    [("raw", 0), ("json", 0), ("raw", 80)],
+)
+def test_ttfb_excludes_tail_audio_and_audio_start_delivery_wait(
+    response_format, audio_start_delay_ms
+):
     times = {}
 
     class AudioStream(httpx.AsyncByteStream):
         async def __aiter__(self):
             if response_format == "json":
                 yield b'{"status":"ready",'
-            await asyncio.sleep(0.03)
+            if not audio_start_delay_ms:
+                await asyncio.sleep(0.03)
             times["received"] = time.monotonic_ns()
             if response_format == "json":
                 yield b'"audio":"AQA="}'
@@ -85,7 +95,8 @@ def test_ttfb_includes_connection_but_excludes_tail_audio_wait(response_format):
     class Transport(httpx.AsyncBaseTransport):
         async def handle_async_request(self, request):
             times["sent"] = time.monotonic_ns()
-            await asyncio.sleep(0.15)
+            if not audio_start_delay_ms:
+                await asyncio.sleep(0.15)
             trace = request.extensions.get("trace")
             if trace:
                 await trace("http11.send_request_body.started", {})
@@ -112,6 +123,7 @@ def test_ttfb_includes_connection_but_excludes_tail_audio_wait(response_format):
                     {
                         "url": "https://mock.example/tts",
                         "response_format": response_format,
+                        "audio_start_delay_ms": audio_start_delay_ms,
                     }
                 ),
             )
@@ -120,6 +132,8 @@ def test_ttfb_includes_connection_but_excludes_tail_audio_wait(response_format):
             expected = (times["received"] - times["sent"]) / 1_000_000
             assert len(tester.reported) == 1
             assert abs(tester.reported[0] - expected) <= 5, (tester.reported, expected)
+            if audio_start_delay_ms:
+                assert tester.reported[0] < 50
         finally:
             if tester.timer:
                 tester.timer.cancel()

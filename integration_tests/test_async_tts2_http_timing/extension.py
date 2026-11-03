@@ -1,6 +1,7 @@
 """A minimal HTTP adapter exercising the production TTS2 HTTP base."""
 
 import base64
+import asyncio
 import httpx
 from ten_ai_base.struct import TTS2HttpResponseEventType
 from ten_ai_base.tts2_http import (
@@ -13,6 +14,7 @@ from ten_ai_base.tts2_http import (
 class Config(AsyncTTS2HttpConfig):
     url: str
     response_format: str = "raw"
+    audio_start_delay_ms: int = 0
 
     def update_params(self):
         pass
@@ -61,6 +63,11 @@ class TimingExtension(AsyncTTS2HttpExtension):
 
     async def create_client(self, config, ten_env):
         return Client(config)
+
+    async def send_tts_audio_start(self, request_id, turn_id=-1, extra_metadata=None):
+        if self.config.audio_start_delay_ms:
+            await asyncio.sleep(self.config.audio_start_delay_ms / 1000)
+        await super().send_tts_audio_start(request_id, turn_id, extra_metadata)
 
     def vendor(self):
         return "http-timing-test"

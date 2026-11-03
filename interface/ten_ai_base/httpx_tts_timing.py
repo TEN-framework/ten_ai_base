@@ -1,7 +1,6 @@
-"""Observe TTS timing at HTTPX transport boundaries."""
+"""Observe HTTP request start and first audio response."""
 
 from collections.abc import AsyncIterator, Callable
-from typing import Any
 
 import httpx
 
@@ -35,21 +34,10 @@ def observe_http_ttfb(
     on_audio_received: Callable[[], None],
     on_response_chunk: Callable[[], None],
 ) -> None:
-    """Attach transport observers while preserving existing hooks and trace calls."""
+    """Record request start before connection setup and observe audio responses."""
 
     async def request_hook(request: httpx.Request) -> None:
-        previous_trace = request.extensions.get("trace")
-
-        async def trace(event_name: str, info: dict[str, Any]) -> None:
-            if event_name in (
-                "http11.send_request_body.started",
-                "http2.send_request_body.started",
-            ):
-                on_text_sent()
-            if previous_trace is not None:
-                await previous_trace(event_name, info)
-
-        request.extensions["trace"] = trace
+        on_text_sent()
 
     async def response_hook(response: httpx.Response) -> None:
         # Structured protocols identify valid audio in their adapters. Keep the

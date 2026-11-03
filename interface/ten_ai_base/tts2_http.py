@@ -53,7 +53,6 @@ class AsyncTTS2HttpClient:
         self._ttfb_request_id: str | None = None
         self._first_text_sent_ns: int | None = None
         self._first_audio_received_ns: int | None = None
-        self._transport_text_sent = False
         self._last_response_chunk_ns: int | None = None
 
     def begin_ttfb_request(self, request_id: str) -> None:
@@ -62,19 +61,12 @@ class AsyncTTS2HttpClient:
             self._ttfb_request_id = request_id
             self._first_text_sent_ns = None
             self._first_audio_received_ns = None
-            self._transport_text_sent = False
             self._last_response_chunk_ns = None
 
     def record_text_sent(self) -> None:
-        """Called at the transport or SDK boundary, after connection setup."""
+        """Called before starting the HTTP request or public SDK call."""
         if self._first_text_sent_ns is None:
             self._first_text_sent_ns = time.monotonic_ns()
-
-    def record_transport_text_sent(self) -> None:
-        """Replace an SDK fallback with the first observed socket send."""
-        if not self._transport_text_sent:
-            self._first_text_sent_ns = time.monotonic_ns()
-            self._transport_text_sent = True
 
     def record_response_chunk_received(self) -> None:
         """Keep a transport arrival candidate until the adapter identifies audio."""
@@ -100,7 +92,7 @@ class AsyncTTS2HttpClient:
 
         observe_http_ttfb(
             client,
-            self.record_transport_text_sent,
+            self.record_text_sent,
             self.record_audio_received,
             self.record_response_chunk_received,
         )
@@ -146,9 +138,9 @@ class AsyncTTS2HttpExtension(AsyncTTS2BaseExtension):
         self.current_request_finished: bool = False
         self.total_audio_bytes: int = 0
         self.first_chunk: bool = False
-        self.recorder_map: dict[
-            str, PCMWriter
-        ] = {}  # Store PCMWriter instances for different request_ids
+        self.recorder_map: dict[str, PCMWriter] = (
+            {}
+        )  # Store PCMWriter instances for different request_ids
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         try:

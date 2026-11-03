@@ -29,14 +29,12 @@ class Client(AsyncTTS2HttpClient):
         super().__init__()
         self.config = config
         self.http = httpx.AsyncClient()
-        self.observe_http_ttfb(self.http)
 
     async def get(self, text, request_id):
         if text and self.config.response_format == "json":
             response = await self.http.post(self.config.url, content=text)
             audio = base64.b64decode(response.json()["audio"])
             if audio:
-                self.record_audio_received()
                 yield audio, TTS2HttpResponseEventType.RESPONSE
         elif text:
             async with self.http.stream(

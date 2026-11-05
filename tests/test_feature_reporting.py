@@ -270,8 +270,15 @@ class _FeatureASRExtension(AsyncASRBaseExtension):
 
 
 class _FeatureTTSExtension(AsyncTTS2BaseExtension):
+    def __init__(self, name: str, vendor_metadata: dict[str, Any] | None = None):
+        super().__init__(name)
+        self._vendor_metadata = vendor_metadata or {}
+
     def vendor(self) -> str:
         return "feature-tts"
+
+    def vendor_metadata(self) -> dict[str, Any]:
+        return self._vendor_metadata
 
     async def request_tts(self, t) -> None:
         return None
@@ -320,7 +327,9 @@ async def async_test_asr_on_start_reports_vendor_feature():
             {
                 "features": {
                     "asr.vendor": "feature-asr",
+                    "asr_vendor": "feature-asr",
                     "asr.model": "feature-model",
+                    "asr_model": "feature-model",
                 }
             },
         )
@@ -359,7 +368,12 @@ async def async_test_asr_on_start_omits_unavailable_model_feature(
         await ext.on_start(ext.ten_env)
         assert sent_data[0] == (
             DATA_OUT_PROVIDE_FEATURES,
-            {"features": {"asr.vendor": "feature-asr"}},
+            {
+                "features": {
+                    "asr.vendor": "feature-asr",
+                    "asr_vendor": "feature-asr",
+                }
+            },
         )
     finally:
         await _cancel_task(ext.audio_actual_send_metrics_task)
@@ -378,7 +392,55 @@ async def async_test_tts2_on_start_reports_vendor_feature():
         await ext.on_start(ten_env)
         assert sent_data[0] == (
             DATA_OUT_PROVIDE_FEATURES,
-            {"features": {"tts.vendor": "feature-tts"}},
+            {
+                "features": {
+                    "tts.vendor": "feature-tts",
+                    "tts_vendor": "feature-tts",
+                }
+            },
+        )
+    finally:
+        await _cancel_task(ext.loop_task)
+
+
+@pytest.mark.parametrize(
+    "vendor_metadata, model_features",
+    [
+        ({"model": "feature-model", "region": "us"}, {"tts_model": "feature-model"}),
+        ({}, {}),
+        ({"model": ""}, {}),
+        ({"model": None}, {}),
+        ({"model": 123}, {}),
+    ],
+)
+def test_tts2_on_start_reports_model_when_available(
+    vendor_metadata: dict[str, Any], model_features: dict[str, str]
+):
+    asyncio.run(
+        async_test_tts2_on_start_reports_model_when_available(
+            vendor_metadata, model_features
+        )
+    )
+
+
+async def async_test_tts2_on_start_reports_model_when_available(
+    vendor_metadata: dict[str, Any], model_features: dict[str, str]
+):
+    sent_data: list[tuple[str, dict]] = []
+    ext = _FeatureTTSExtension("feature-tts", vendor_metadata)
+    ten_env = _make_mock_ten_env(sent_data)
+
+    try:
+        await ext.on_start(ten_env)
+        assert sent_data[0] == (
+            DATA_OUT_PROVIDE_FEATURES,
+            {
+                "features": {
+                    "tts.vendor": "feature-tts",
+                    "tts_vendor": "feature-tts",
+                    **model_features,
+                }
+            },
         )
     finally:
         await _cancel_task(ext.loop_task)

@@ -247,9 +247,13 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         await super().on_start(ten_env)
+        vendor = self.vendor()
         await send_provide_features(
             ten_env,
-            {"tts.vendor": self.vendor()},
+            {
+                "tts.vendor": vendor,
+                "tts_vendor": vendor,
+            },
         )
         if self.loop_task is None:
             self.loop = asyncio.get_event_loop()

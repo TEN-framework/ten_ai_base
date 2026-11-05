@@ -320,7 +320,9 @@ async def async_test_asr_on_start_reports_vendor_feature():
             {
                 "features": {
                     "asr.vendor": "feature-asr",
+                    "asr_vendor": "feature-asr",
                     "asr.model": "feature-model",
+                    "asr_model": "feature-model",
                 }
             },
         )
@@ -359,7 +361,12 @@ async def async_test_asr_on_start_omits_unavailable_model_feature(
         await ext.on_start(ext.ten_env)
         assert sent_data[0] == (
             DATA_OUT_PROVIDE_FEATURES,
-            {"features": {"asr.vendor": "feature-asr"}},
+            {
+                "features": {
+                    "asr.vendor": "feature-asr",
+                    "asr_vendor": "feature-asr",
+                }
+            },
         )
     finally:
         await _cancel_task(ext.audio_actual_send_metrics_task)
@@ -378,7 +385,12 @@ async def async_test_tts2_on_start_reports_vendor_feature():
         await ext.on_start(ten_env)
         assert sent_data[0] == (
             DATA_OUT_PROVIDE_FEATURES,
-            {"features": {"tts.vendor": "feature-tts"}},
+            {
+                "features": {
+                    "tts.vendor": "feature-tts",
+                    "tts_vendor": "feature-tts",
+                }
+            },
         )
     finally:
         await _cancel_task(ext.loop_task)

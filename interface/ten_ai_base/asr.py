@@ -37,8 +37,8 @@ from .const import (
     PROPERTY_KEY_METADATA,
     PROPERTY_KEY_SESSION_ID,
 )
+from .otel import InstrumentedExtension
 from ten_runtime import (
-    AsyncExtension,
     AsyncTenEnv,
     Cmd,
     Data,
@@ -61,12 +61,15 @@ def _connecting_before_start_connection(
             self._connection_machine.try_connecting(),
             already_done="start_connection: already connecting, skip.",
         )
+        self.start_otel_connection_span("asr.websocket.connection")
         return await method(self, *args, **kwargs)
 
     return wrapper
 
 
-class AsyncASRBaseExtension(AsyncExtension):
+class AsyncASRBaseExtension(InstrumentedExtension):
+    otel_instrumentation_name = "ten_ai_base.asr"
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         if impl := cls.__dict__.get("start_connection"):
@@ -141,6 +144,10 @@ class AsyncASRBaseExtension(AsyncExtension):
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
+        self.start_otel_session_span(
+            "asr.session",
+            attributes={"ten.span.long_running": True},
+        )
 
         vendor = self.vendor()
         features = {
@@ -197,7 +204,12 @@ class AsyncASRBaseExtension(AsyncExtension):
                 category=LOG_CATEGORY_KEY_POINT,
             )
 
-            await self.finalize(self.session_id)
+            try:
+                await self.finalize(self.session_id)
+            finally:
+                self.end_otel_connection_span()
+                if self._safe_is_connected():
+                    self.start_otel_connection_span("asr.websocket.connection")
 
         elif data_name == DATA_IN_TRIGGER_CONNECT:
             ten_env.log_info(
@@ -214,19 +226,30 @@ class AsyncASRBaseExtension(AsyncExtension):
 
         self.stopped = True
 
-        await self.stop_connection()
+        try:
+            await self.stop_connection()
 
-        await self._emit_connection_transition(
-            self._connection_machine.try_disconnected(code=0, message="stopped"),
-            already_done="on_stop: already disconnected, skip.",
-        )
+            await self._emit_connection_transition(
+                self._connection_machine.try_disconnected(code=0, message="stopped"),
+                already_done="on_stop: already disconnected, skip.",
+            )
 
-        if self.audio_actual_send_metrics_task:
-            self.audio_actual_send_metrics_task.cancel()
-            self.audio_actual_send_metrics_task = None
+            if self.audio_actual_send_metrics_task:
+                self.audio_actual_send_metrics_task.cancel()
+                self.audio_actual_send_metrics_task = None
 
-        await self._send_audio_actual_send_metrics()
-        await self._send_dropped_audio_frames_metrics()
+            await self._send_audio_actual_send_metrics()
+            await self._send_dropped_audio_frames_metrics()
+        finally:
+            self.end_otel_connection_span()
+            self.end_otel_session_span()
+
+    async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
+        try:
+            await super().on_deinit(ten_env)
+        finally:
+            self.end_otel_connection_span()
+            self.end_otel_session_span()
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
         cmd_name = cmd.get_name()
@@ -568,10 +591,13 @@ class AsyncASRBaseExtension(AsyncExtension):
         Vendor callback: connection is ready.
         The base class validates the state machine and emits CONNECTED.
         """
-        await self._emit_connection_transition(
-            self._connection_machine.try_connected(),
-            already_done="on_connected: already connected, skip.",
-        )
+        try:
+            await self._emit_connection_transition(
+                self._connection_machine.try_connected(),
+                already_done="on_connected: already connected, skip.",
+            )
+        finally:
+            self.start_otel_connection_span("asr.websocket.connection")
 
     @final
     async def on_disconnected(
@@ -585,11 +611,18 @@ class AsyncASRBaseExtension(AsyncExtension):
         Vendor notification: connection closed (including connect failure).
         The base class checks the state machine and emits DISCONNECTED.
         """
-        await self._emit_connection_transition(
-            self._connection_machine.try_disconnected(code=code, message=message),
-            already_done="on_disconnected: already disconnected, skip.",
-            vendor_info=vendor_info,
-        )
+        try:
+            await self._emit_connection_transition(
+                self._connection_machine.try_disconnected(code=code, message=message),
+                already_done="on_disconnected: already disconnected, skip.",
+                vendor_info=vendor_info,
+            )
+        finally:
+            self.end_otel_connection_span(
+                error=(message or "abnormal websocket disconnect")
+                if code not in (0, 1000)
+                else None,
+            )
 
     async def _emit_connection_transition(
         self,

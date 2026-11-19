@@ -25,10 +25,14 @@ source without requiring this repository's `.ten` directory.
 ## TTS request tracing
 
 `AsyncTTS2BaseExtension` uses the host's OpenTelemetry provider through the
-`ten_ai_base.tts2` tracer. It creates one `tts.request` span per accepted request,
-starting with the first text chunk and including queue wait. The first chunk's
-parent context and baggage are retained across queued and interleaved chunks.
-The request context is also used by TTS output helpers called from background
+`ten_ai_base.tts2` tracer. It creates one `tts.session` span for the extension
+lifecycle and one `tts.websocket.connection` span for each connection segment.
+The session span has `ten.span.long_running=True`; connection spans end when the
+connection closes or when a `tts.request` completes, so each segment stays
+bounded. It also creates one `tts.request` span per accepted request, starting
+with the first text chunk and including queue wait. The first chunk's parent
+context and baggage are retained across queued and interleaved chunks. The
+request context is also used by TTS output helpers called from background
 provider tasks.
 
 Spans end at `finish_request`, processing failure, flush, or shutdown. Attributes
@@ -42,4 +46,9 @@ exceptions are suppressed at instrumentation boundaries so they do not block
 callbacks or message delivery. Application and transport exceptions retain
 their existing behavior. Cancellation and failures still follow the existing
 TTS request state machine; tracing does not change request scheduling.
+
+`AsyncASRBaseExtension` follows the same lifecycle model with `asr.session` and
+bounded `asr.websocket.connection` spans. The connection span rotates after
+`asr_finalize` and ends on disconnect; abnormal disconnects set its status to
+error. Both session spans are marked with `ten.span.long_running=True`.
 

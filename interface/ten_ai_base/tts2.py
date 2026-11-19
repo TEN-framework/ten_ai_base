@@ -78,6 +78,8 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
     """
 
     # Create the queue for message processing
+    otel_instrumentation_name = "ten_ai_base.tts2"
+
     def __init__(self, name: str):
         super().__init__(name)
         self.ten_env: AsyncTenEnv = None  # type: ignore
@@ -174,6 +176,11 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
         for request_id in list(self._request_traces):
             self._end_request_trace(request_id, outcome)
 
+    def _rotate_otel_connection_span(self) -> None:
+        self.end_otel_connection_span()
+        if self.is_connected():
+            self.start_otel_connection_span("tts.websocket.connection")
+
     async def _send_request_data(self, data: Data, request_id: str | None) -> None:
         with use_otel_context(self._request_context(request_id)):
             await self.ten_env.send_data(data)
@@ -247,6 +254,10 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         await super().on_start(ten_env)
+        self.start_otel_session_span(
+            "tts.session",
+            attributes={"ten.span.long_running": True},
+        )
         vendor = self.vendor()
         features = {
             "tts.vendor": vendor,
@@ -276,12 +287,16 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
             await self.input_queue.put(None)  # Signal the loop to stop processing
         finally:
             self._end_request_traces("interrupted")
+            self.end_otel_connection_span()
+            self.end_otel_session_span()
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         try:
             await super().on_deinit(ten_env)
         finally:
             self._end_request_traces("interrupted")
+            self.end_otel_connection_span()
+            self.end_otel_session_span()
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd) -> None:
         cmd_name = cmd.get_name()
@@ -508,11 +523,13 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
 
             except asyncio.CancelledError:
                 self._end_request_trace(t.request_id, "interrupted")
+                self._rotate_otel_connection_span()
                 ten_env.log_info(
                     f"Task cancelled: {t.text}", category=LOG_CATEGORY_TRANSCRIPTS
                 )
             except Exception as err:
                 self._end_request_trace(t.request_id, "error")
+                self._rotate_otel_connection_span()
                 ten_env.log_error(
                     f"Task failed: {t.text}, err: {traceback.format_exc()}",
                     category=LOG_CATEGORY_TRANSCRIPTS,
@@ -818,6 +835,12 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
         if last == current:
             return
 
+        if current in (
+            ModuleConnectionStatus.CONNECTING,
+            ModuleConnectionStatus.CONNECTED,
+        ):
+            self.start_otel_connection_span("tts.websocket.connection")
+
         self._connection_status = current
         event = ModuleConnectionStatusChanged(
             id=self._active_connection_event_id(),
@@ -837,6 +860,13 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
             f"tts_connection_status_changed: {event.model_dump(mode='json')}",
             category=LOG_CATEGORY_KEY_POINT,
         )
+
+        if current == ModuleConnectionStatus.DISCONNECTED:
+            self.end_otel_connection_span(
+                error=(message or "abnormal websocket disconnect")
+                if code not in (0, 1000)
+                else None,
+            )
 
     def _active_request_id(self) -> str | None:
         return self._processing_request_id or self.current_audio_request_id
@@ -1011,6 +1041,7 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
                 "interrupted" if reason == TTSAudioEndReason.INTERRUPTED else "completed"
             )
             self._end_request_trace(request_id, outcome)
+            self._rotate_otel_connection_span()
 
     @abstractmethod
     def vendor(self) -> str:

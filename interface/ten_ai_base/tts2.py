@@ -718,7 +718,7 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
         )
         self._add_request_span_event(
             request_id,
-            "error",
+            "tts.error",
             attributes={
                 "id": request_id or "",
                 "module": ModuleType.TTS.value,
@@ -765,7 +765,7 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
         data.set_property_from_json(None, metrics.model_dump_json())
         self._add_request_span_event(
             request_id,
-            "metrics",
+            "tts.metrics",
             attributes={
                 "id": metrics.id,
                 "module": metrics.module,

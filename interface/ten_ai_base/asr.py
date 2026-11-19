@@ -429,7 +429,7 @@ class AsyncASRBaseExtension(InstrumentedExtension):
         )
 
         self.add_otel_span_event(
-            "error",
+            "asr.error",
             attributes={
                 "id": self.uuid,
                 "module": ModuleType.ASR.value,
@@ -552,7 +552,7 @@ class AsyncASRBaseExtension(InstrumentedExtension):
         )
 
         self.add_otel_span_event(
-            "metrics",
+            "asr.metrics",
             attributes={
                 "id": self.uuid,
                 "module": metrics.module,

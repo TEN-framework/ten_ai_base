@@ -157,7 +157,10 @@ async def test_asr_error_and_metrics_become_connection_span_events(spans):
     await extension.on_disconnected(code=1006, message="abnormal")
 
     connection = spans.get_finished_spans()[0]
-    assert [event.name for event in connection.events] == ["error", "metrics"]
+    assert [event.name for event in connection.events] == [
+        "asr.error",
+        "asr.metrics",
+    ]
     assert connection.events[0].attributes["code"] == 17
     assert connection.events[0].attributes["message"] == "vendor failed"
     assert json.loads(connection.events[1].attributes["metrics"]) == {"ttfw": 42}
@@ -185,7 +188,10 @@ async def test_tts_error_and_metrics_become_request_span_events(spans):
     await extension.finish_request("request-1")
 
     request = spans.get_finished_spans()[0]
-    assert [event.name for event in request.events] == ["error", "metrics"]
+    assert [event.name for event in request.events] == [
+        "tts.error",
+        "tts.metrics",
+    ]
     assert request.events[0].attributes["code"] == 17
     assert json.loads(request.events[1].attributes["metrics"]) == {"ttfb": 42}
 

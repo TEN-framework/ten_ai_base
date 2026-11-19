@@ -1,6 +1,7 @@
 # ABOUTME: Propagates OTel context through AsyncExtension callbacks.
 # ABOUTME: Leaves business callback names and TEN environment usage unchanged.
 
+import json
 from typing import Any, cast
 
 from opentelemetry import trace
@@ -233,3 +234,32 @@ class InstrumentedExtension(AsyncExtension):
                 span.end()
             except Exception:  # noqa: BLE001, S110 - tracing must not block callbacks.
                 pass
+
+    def add_otel_span_event(
+        self,
+        name: str,
+        *,
+        attributes: dict[str, Any] | None = None,
+        span: trace.Span | None = None,
+    ) -> None:
+        """Record a legacy TEN event on the active lifecycle span."""
+        target = span or self._otel_connection_span or self._otel_session_span
+        if target is None:
+            return
+        try:
+            event_attributes = {
+                key: self._otel_event_attribute(value)
+                for key, value in (attributes or {}).items()
+            }
+            target.add_event(name, attributes=event_attributes)
+        except Exception:  # noqa: BLE001, S110 - tracing must not block callbacks.
+            pass
+
+    @staticmethod
+    def _otel_event_attribute(value: Any) -> str | bool | int | float:
+        if isinstance(value, (str, bool, int, float)):
+            return value
+        try:
+            return json.dumps(value, separators=(",", ":"), default=str)
+        except Exception:  # noqa: BLE001 - tracing must not block callbacks.
+            return str(value)

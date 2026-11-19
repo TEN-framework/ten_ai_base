@@ -1,6 +1,8 @@
 # ABOUTME: Verifies ASR and TTS lifecycle span boundaries and status handling.
 # ABOUTME: Exercises the public extension lifecycle hooks with an in-memory exporter.
 
+import json
+
 import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -9,6 +11,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from ten_ai_base import AsyncASRBaseExtension
+from ten_ai_base.message import ModuleError, ModuleMetrics, ModuleType
 from ten_ai_base.tts2 import AsyncTTS2BaseExtension
 from ten_runtime import Data
 
@@ -133,4 +136,56 @@ async def test_tts_request_completion_rotates_connection_span(spans):
     ]
     assert finished[-1].attributes["ten.span.long_running"] is True
     assert finished[2].status.status_code == trace.StatusCode.ERROR
+
+
+@pytest.mark.asyncio
+async def test_asr_error_and_metrics_become_connection_span_events(spans):
+    env = _Env()
+    extension = _ASR("asr")
+    extension.ten_env = env
+    extension.connected = True
+    await extension.on_connected()
+
+    await extension.send_asr_error(ModuleError(code=17, message="vendor failed"))
+    await extension._send_asr_metrics(
+        ModuleMetrics(
+            module=ModuleType.ASR,
+            vendor="test",
+            metrics={"ttfw": 42},
+        )
+    )
+    await extension.on_disconnected(code=1006, message="abnormal")
+
+    connection = spans.get_finished_spans()[0]
+    assert [event.name for event in connection.events] == ["error", "metrics"]
+    assert connection.events[0].attributes["code"] == 17
+    assert connection.events[0].attributes["message"] == "vendor failed"
+    assert json.loads(connection.events[1].attributes["metrics"]) == {"ttfw": 42}
+
+
+@pytest.mark.asyncio
+async def test_tts_error_and_metrics_become_request_span_events(spans):
+    env = _Env()
+    extension = _TTS("tts")
+    await extension.on_init(env)
+    extension._begin_request_trace("request-1")
+
+    await extension.send_tts_error(
+        "request-1",
+        ModuleError(code=17, message="vendor failed"),
+    )
+    await extension.send_metrics(
+        ModuleMetrics(
+            module=ModuleType.TTS,
+            vendor="test",
+            metrics={"ttfb": 42},
+        ),
+        "request-1",
+    )
+    await extension.finish_request("request-1")
+
+    request = spans.get_finished_spans()[0]
+    assert [event.name for event in request.events] == ["error", "metrics"]
+    assert request.events[0].attributes["code"] == 17
+    assert json.loads(request.events[1].attributes["metrics"]) == {"ttfb": 42}
 

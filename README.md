@@ -35,6 +35,11 @@ context and baggage are retained across queued and interleaved chunks. The
 request context is also used by TTS output helpers called from background
 provider tasks.
 
+Legacy `error` and `metrics` data events are also recorded as span events on
+the corresponding ASR connection or TTS request span. Their metric maps remain
+event attributes; they are not exported as OTel metric instruments, so clients
+do not aggregate them.
+
 Spans end at `finish_request`, processing failure, flush, or shutdown. Attributes
 include `tts.request_id` and `tts.request.outcome` (`completed`, `error`, or
 `interrupted`); synthesis errors set the span's error status. Text and audio are

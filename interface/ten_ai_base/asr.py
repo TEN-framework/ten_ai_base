@@ -428,6 +428,18 @@ class AsyncASRBaseExtension(InstrumentedExtension):
             property_json,
         )
 
+        self.add_otel_span_event(
+            "error",
+            attributes={
+                "id": self.uuid,
+                "module": ModuleType.ASR.value,
+                "code": error.code,
+                "message": error.message,
+                "vendor_info": vendorInfo or {},
+                "metadata": error.metadata or {},
+            },
+        )
+
         await self.ten_env.send_data(error_data)
 
         self.ten_env.log_info(
@@ -537,6 +549,17 @@ class AsyncASRBaseExtension(InstrumentedExtension):
                     "metadata": self._build_report_metadata(metrics.metadata or None),
                 }
             ),
+        )
+
+        self.add_otel_span_event(
+            "metrics",
+            attributes={
+                "id": self.uuid,
+                "module": metrics.module,
+                "vendor": metrics.vendor,
+                "metrics": metrics.metrics,
+                "metadata": metrics.metadata or {},
+            },
         )
 
         await self.ten_env.send_data(metrics_data)

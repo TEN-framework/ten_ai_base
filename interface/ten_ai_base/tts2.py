@@ -181,6 +181,19 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
         if self.is_connected():
             self.start_otel_connection_span("tts.websocket.connection")
 
+    def _add_request_span_event(
+        self,
+        request_id: str | None,
+        name: str,
+        attributes: dict,
+    ) -> None:
+        request = self._request_traces.get(request_id) if request_id else None
+        self.add_otel_span_event(
+            name,
+            attributes=attributes,
+            span=request[0] if request else None,
+        )
+
     async def _send_request_data(self, data: Data, request_id: str | None) -> None:
         with use_otel_context(self._request_context(request_id)):
             await self.ten_env.send_data(data)
@@ -703,6 +716,18 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
             f"tts_error:  msg: 	{json_data}",
             category=LOG_CATEGORY_KEY_POINT,
         )
+        self._add_request_span_event(
+            request_id,
+            "error",
+            attributes={
+                "id": request_id or "",
+                "module": ModuleType.TTS.value,
+                "code": error.code,
+                "message": error.message,
+                "vendor_info": vendorInfo or {},
+                "metadata": combined_metadata,
+            },
+        )
         await self._send_request_data(error_data, request_id)
 
     async def send_char_audio_metrics(self, request_id: str = ""):
@@ -738,6 +763,17 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         data.set_property_from_json(None, metrics.model_dump_json())
+        self._add_request_span_event(
+            request_id,
+            "metrics",
+            attributes={
+                "id": metrics.id,
+                "module": metrics.module,
+                "vendor": metrics.vendor,
+                "metrics": metrics.metrics,
+                "metadata": metrics.metadata,
+            },
+        )
         await self._send_request_data(data, request_id)
 
     async def send_tts_request_metrics(

@@ -1,6 +1,7 @@
 # ABOUTME: Propagates OTel context through AsyncExtension callbacks.
 # ABOUTME: Leaves business callback names and TEN environment usage unchanged.
 
+import json
 from typing import Any, cast
 
 from opentelemetry import trace
@@ -20,11 +21,16 @@ from .ten_env import InstrumentedTenEnv
 
 class InstrumentedExtension(AsyncExtension):
     otel_instrumentation_name = ""
+    otel_session_name = ""
 
     def __init__(self, name: str):
         super().__init__(name)
         self._otel_root_span: trace.Span | None = None
         self._otel_root_context: Context | None = None
+        self._otel_session_span: trace.Span | None = None
+        self._otel_session_context: Context | None = None
+        self._otel_connection_span: trace.Span | None = None
+        self._otel_connection_context: Context | None = None
 
     def _instrument(self, ten_env: AsyncTenEnv) -> AsyncTenEnv:
         return cast("AsyncTenEnv", InstrumentedTenEnv(ten_env))
@@ -89,7 +95,11 @@ class InstrumentedExtension(AsyncExtension):
         context = extract_otel_context(message)
         try:
             if not trace.get_current_span(context).get_span_context().is_valid:
-                context = self._otel_root_context or context
+                context = (
+                    self._otel_root_context
+                    or self._otel_session_context
+                    or context
+                )
         except Exception:  # noqa: BLE001, S110 - tracing must not stop application work.
             pass
         with use_otel_context(context):
@@ -138,3 +148,124 @@ class InstrumentedExtension(AsyncExtension):
                 span.end()
             except Exception:  # noqa: BLE001, S110 - tracing must not stop application work.
                 pass
+
+    def _start_otel_span(
+        self,
+        name: str,
+        *,
+        parent_context: Context | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> tuple[trace.Span, Context]:
+        """Start a lifecycle span and return it with its child context."""
+        span: trace.Span = trace.INVALID_SPAN
+        context = parent_context if parent_context is not None else Context()
+        try:
+            span = trace.get_tracer(self.otel_instrumentation_name).start_span(
+                name,
+                context=context,
+                attributes=attributes,
+                record_exception=False,
+                set_status_on_exception=False,
+            )
+            if span.get_span_context().is_valid:
+                context = trace.set_span_in_context(span, context)
+        except Exception:  # noqa: BLE001, S110 - tracing must not block callbacks.
+            pass
+        return span, context
+
+    def start_otel_session_span(
+        self,
+        name: str,
+        *,
+        attributes: dict[str, Any] | None = None,
+    ) -> trace.Span:
+        """Start the one span covering the extension session."""
+        if self._otel_session_span is not None:
+            return self._otel_session_span
+        span, context = self._start_otel_span(
+            name,
+            attributes=attributes,
+        )
+        self._otel_session_span = span
+        self._otel_session_context = context
+        return span
+
+    def end_otel_session_span(self) -> None:
+        """End the extension session span, if present."""
+        span = self._otel_session_span
+        self._otel_session_span = None
+        self._otel_session_context = None
+        if span is None:
+            return
+        try:
+            span.end()
+        except Exception:  # noqa: BLE001, S110 - tracing must not block callbacks.
+            pass
+
+    def start_otel_connection_span(self, name: str) -> trace.Span:
+        """Start a websocket connection attempt under the session span."""
+        if self._otel_connection_span is not None:
+            return self._otel_connection_span
+        if self.otel_session_name:
+            self.start_otel_session_span(
+                self.otel_session_name, attributes={"ten.span.long_running": True},
+            )
+        span, context = self._start_otel_span(
+            name,
+            parent_context=self._otel_session_context,
+            attributes={"ten.span.long_running": True},
+        )
+        self._otel_connection_span = span
+        self._otel_connection_context = context
+        return span
+
+    def end_otel_connection_span(
+        self,
+        *,
+        error: str | None = None,
+    ) -> None:
+        """End a websocket connection, optionally marking an error."""
+        span = self._otel_connection_span
+        self._otel_connection_span = None
+        self._otel_connection_context = None
+        if span is None:
+            return
+        try:
+            if error:
+                span.set_status(trace.StatusCode.ERROR, error)
+        except Exception:  # noqa: BLE001, S110 - tracing must not block callbacks.
+            pass
+        finally:
+            try:
+                span.end()
+            except Exception:  # noqa: BLE001, S110 - tracing must not block callbacks.
+                pass
+
+    def add_otel_span_event(
+        self,
+        name: str,
+        *,
+        attributes: dict[str, Any] | None = None,
+        span: trace.Span | None = None,
+    ) -> None:
+        """Record a legacy TEN event on the active lifecycle span."""
+        target = span or self._otel_connection_span or self._otel_session_span
+        if target is None:
+            return
+        try:
+            event_attributes = {
+                key: self._otel_event_attribute(value)
+                for key, value in (attributes or {}).items()
+            }
+            target.add_event(name, attributes=event_attributes)
+        except Exception:  # noqa: BLE001, S110 - tracing must not block callbacks.
+            pass
+
+    @staticmethod
+    def _otel_event_attribute(value: Any) -> str | bool | int | float:
+        if isinstance(value, (str, bool, int, float)):
+            return value
+        try:
+            return json.dumps(value, separators=(",", ":"), default=str)
+        except Exception:  # noqa: BLE001 - tracing must not block callbacks.
+            return str(value)

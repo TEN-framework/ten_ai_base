@@ -10,6 +10,7 @@ from opentelemetry import baggage, context, trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from ten_ai_base.message import TTSAudioEndReason
 from ten_ai_base.otel import extract_otel_context, inject_otel_context
 from ten_ai_base.otel.ten_env import InstrumentedTenEnv
 from ten_ai_base.tts2 import AsyncTTS2BaseExtension
@@ -106,10 +107,16 @@ async def test_request_spans_include_queue_wait_and_keep_interleaved_context(spa
         assert set(finished) == {"a", "b"}
         for request_id, trace_id in [("a", 100), ("b", 200)]:
             span = finished[request_id]
-            assert span.name == "tts.request"
+            assert span.name == "tts.synthesis"
             assert span.context.trace_id == trace_id
             assert span.parent.span_id == trace_id + 1
             assert before <= span.start_time <= queued <= span.end_time
+            assert span.events[0].name == "tts.request.received"
+            assert span.events[0].attributes["tts.request_id"] == request_id
+            assert sum(event.name == "tts.request.received" for event in span.events) == 1
+            assert [event.name for event in span.events] == [
+                "tts.request.received", "tts.result.end",
+            ]
         for data in env.sent:
             request_id = json.loads(data.get_property_to_json("")[0])["request_id"]
             propagated = extract_otel_context(data)
@@ -273,6 +280,109 @@ async def test_background_output_uses_request_context(spans):
         extract_otel_context(env.sent[0])
     ).get_span_context()
     assert extracted.span_id == finished[0].context.span_id
+
+
+@pytest.mark.asyncio
+async def test_synthesis_ends_at_audio_end_and_retains_context_until_cleanup(spans):
+    env = Env()
+    ext = TTS("tts")
+    await ext._wrapper_on_init(env)
+    await receive(ext, env, "a", parent(100))
+    before_end = time.time_ns()
+    await ext.send_tts_audio_end("a", 12, 34)
+    after_end = time.time_ns()
+    finished = spans.get_finished_spans()
+    assert len(finished) == 1
+    synthesis = finished[0]
+    assert synthesis.name == "tts.synthesis"
+    assert synthesis.parent.span_id == 101
+    assert synthesis.context.trace_id == 100
+    assert before_end <= synthesis.end_time <= after_end
+    assert [event.name for event in synthesis.events] == [
+        "tts.request.received", "tts.result.end",
+    ]
+    assert synthesis.events[-1].attributes["tts.request_id"] == "a"
+    assert before_end <= synthesis.events[-1].timestamp <= synthesis.end_time
+
+    await ext.send_usage_metrics("a")
+    propagated = extract_otel_context(env.sent[-1])
+    propagated_span = trace.get_current_span(propagated).get_span_context()
+    assert propagated_span.trace_id == synthesis.context.trace_id
+    assert propagated_span.span_id == synthesis.context.span_id
+    assert baggage.get_baggage("request", propagated) == "a"
+    await ext.finish_request("a")
+    assert len(spans.get_finished_spans()) == 1
+
+
+@pytest.mark.asyncio
+async def test_request_cleanup_does_not_end_synthesis_before_result_end(spans):
+    env = Env()
+    ext = TTS("tts")
+    await ext._wrapper_on_init(env)
+    await receive(ext, env, "a", parent(100))
+    await ext.finish_request("a")
+    assert not spans.get_finished_spans()
+    await ext.send_tts_audio_end("a", 0, 0)
+    assert len(spans.get_finished_spans()) == 1
+    assert spans.get_finished_spans()[0].events[-1].name == "tts.result.end"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reason", [TTSAudioEndReason.REQUEST_END, TTSAudioEndReason.ERROR, TTSAudioEndReason.INTERRUPTED],
+)
+async def test_synthesis_result_end_status_matches_reason(spans, reason):
+    env = Env()
+    ext = TTS("tts")
+    await ext._wrapper_on_init(env)
+    await receive(ext, env, "a", parent(100))
+    await ext.send_tts_audio_end("a", 0, 0, reason=reason)
+    await ext.finish_request("a", reason=reason)
+    finished = spans.get_finished_spans()
+    assert len(finished) == 1
+    assert finished[0].status.status_code == (
+        trace.StatusCode.ERROR if reason == TTSAudioEndReason.ERROR else trace.StatusCode.UNSET
+    )
+    assert finished[0].events[-1].attributes["reason"] == reason.value
+
+
+@pytest.mark.asyncio
+async def test_failed_audio_end_delivery_does_not_record_result_end(spans):
+    class BrokenEnv(Env):
+        async def send_data(self, data, options=None):
+            raise ValueError("transport failed")
+
+    env = BrokenEnv()
+    ext = TTS("tts")
+    await ext._wrapper_on_init(env)
+    await receive(ext, env, "a", parent(100))
+    with pytest.raises(ValueError, match="transport failed"):
+        await ext.send_tts_audio_end("a", 0, 0)
+    assert not spans.get_finished_spans()
+    await ext._wrapper_on_deinit(env)
+    synthesis = spans.get_finished_spans()[0]
+    assert synthesis.attributes["tts.request.outcome"] == "interrupted"
+    assert [event.name for event in synthesis.events] == ["tts.request.received"]
+
+
+@pytest.mark.asyncio
+async def test_usage_after_synthesis_end_is_recorded_on_connection(spans):
+    env = Env()
+    ext = TTS("tts")
+    await ext._wrapper_on_init(env)
+    await ext.on_connected()
+    await receive(ext, env, "a", parent(100))
+    await ext.send_tts_audio_end("a", 0, 0)
+    await ext.send_usage_metrics("a")
+    await ext.finish_request("a")
+    await ext.on_disconnected(code=1000)
+    finished = spans.get_finished_spans()
+    assert [span.name for span in finished] == [
+        "tts.synthesis", "tts.websocket.connection",
+    ]
+    assert [event.name for event in finished[1].events] == ["tts.metrics"]
+    assert finished[1].events[0].attributes["tts.request_id"] == "a"
+    await ext.on_deinit(env)
 
 
 @pytest.mark.asyncio

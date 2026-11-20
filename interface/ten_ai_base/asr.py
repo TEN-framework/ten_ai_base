@@ -8,6 +8,9 @@ from typing import Any, Callable, final
 import functools
 import uuid
 
+from opentelemetry import trace
+from opentelemetry.context import Context
+
 from .struct import ASRResult
 from .types import ASRBufferConfig, ASRBufferConfigModeDiscard, ASRBufferConfigModeKeep
 
@@ -38,6 +41,7 @@ from .const import (
     PROPERTY_KEY_SESSION_ID,
 )
 from .otel import InstrumentedExtension
+from .otel.propagation import use_otel_context
 from ten_runtime import (
     AsyncTenEnv,
     Cmd,
@@ -62,13 +66,18 @@ def _connecting_before_start_connection(
             already_done="start_connection: already connecting, skip.",
         )
         self.start_otel_connection_span("asr.websocket.connection")
-        return await method(self, *args, **kwargs)
+        try:
+            return await method(self, *args, **kwargs)
+        except (Exception, asyncio.CancelledError) as error:
+            self.end_otel_connection_span(error=str(error) or "connection attempt cancelled")
+            raise
 
     return wrapper
 
 
 class AsyncASRBaseExtension(InstrumentedExtension):
     otel_instrumentation_name = "ten_ai_base.asr"
+    otel_session_name = "asr.session"
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -108,6 +117,27 @@ class AsyncASRBaseExtension(InstrumentedExtension):
         self._connection_requested = False
         self._connection_lock = asyncio.Lock()
         self._connection_machine = ConnectionStatusMachine()
+        self._segment_span: trace.Span | None = None
+        self._segment_context: Context | None = None
+
+    def _begin_segment_trace(self) -> None:
+        if self._segment_span is None and not self.stopped:
+            self.start_otel_session_span(
+                self.otel_session_name, attributes={"ten.span.long_running": True},
+            )
+            self._segment_span, self._segment_context = self._start_otel_span(
+                "asr.segment", parent_context=self._otel_session_context,
+            )
+
+    def _end_segment_trace(self) -> None:
+        span = self._segment_span
+        self._segment_span = None
+        self._segment_context = None
+        if span is not None:
+            try:
+                span.end()
+            except Exception:  # noqa: BLE001, S110 - tracing must not block callbacks.
+                pass
 
     @property
     def connection_status(self) -> ModuleConnectionStatus:
@@ -145,7 +175,7 @@ class AsyncASRBaseExtension(InstrumentedExtension):
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log_info("on_start")
         self.start_otel_session_span(
-            "asr.session",
+            self.otel_session_name,
             attributes={"ten.span.long_running": True},
         )
 
@@ -175,6 +205,7 @@ class AsyncASRBaseExtension(InstrumentedExtension):
     async def on_audio_frame(
         self, ten_env: AsyncTenEnv, audio_frame: AudioFrame
     ) -> None:
+        self._begin_segment_trace()
         await self.audio_frames_queue.put(audio_frame)
 
     async def on_data(self, ten_env: AsyncTenEnv, data: Data) -> None:
@@ -204,12 +235,13 @@ class AsyncASRBaseExtension(InstrumentedExtension):
                 category=LOG_CATEGORY_KEY_POINT,
             )
 
-            try:
+            self.add_otel_span_event(
+                "asr.finalize",
+                attributes={"finalize_id": finalize_id},
+                span=self._segment_span,
+            )
+            with use_otel_context(self._segment_context or Context()):
                 await self.finalize(self.session_id)
-            finally:
-                self.end_otel_connection_span()
-                if self._safe_is_connected():
-                    self.start_otel_connection_span("asr.websocket.connection")
 
         elif data_name == DATA_IN_TRIGGER_CONNECT:
             ten_env.log_info(
@@ -241,6 +273,7 @@ class AsyncASRBaseExtension(InstrumentedExtension):
             await self._send_audio_actual_send_metrics()
             await self._send_dropped_audio_frames_metrics()
         finally:
+            self._end_segment_trace()
             self.end_otel_connection_span()
             self.end_otel_session_span()
 
@@ -248,6 +281,7 @@ class AsyncASRBaseExtension(InstrumentedExtension):
         try:
             await super().on_deinit(ten_env)
         finally:
+            self._end_segment_trace()
             self.end_otel_connection_span()
             self.end_otel_session_span()
 
@@ -430,6 +464,7 @@ class AsyncASRBaseExtension(InstrumentedExtension):
 
         self.add_otel_span_event(
             "asr.error",
+            span=self._segment_span,
             attributes={
                 "id": self.uuid,
                 "module": ModuleType.ASR.value,
@@ -463,6 +498,14 @@ class AsyncASRBaseExtension(InstrumentedExtension):
         )
 
         await self.ten_env.send_data(asr_finalize_end_data)
+        if self._segment_span is not None:
+            self.add_otel_span_event(
+                "asr.finalize_end",
+                attributes={"finalize_id": self.finalize_id},
+                span=self._segment_span,
+            )
+            self._end_segment_trace()
+            self._begin_segment_trace()
         self.ten_env.log_info(
             f"send asr_finalize_end, finalize_id: {self.finalize_id}",
             category=LOG_CATEGORY_KEY_POINT,
@@ -553,6 +596,7 @@ class AsyncASRBaseExtension(InstrumentedExtension):
 
         self.add_otel_span_event(
             "asr.metrics",
+            span=self._segment_span,
             attributes={
                 "id": self.uuid,
                 "module": metrics.module,

@@ -21,6 +21,7 @@ from .ten_env import InstrumentedTenEnv
 
 class InstrumentedExtension(AsyncExtension):
     otel_instrumentation_name = ""
+    otel_session_name = ""
 
     def __init__(self, name: str):
         super().__init__(name)
@@ -202,12 +203,17 @@ class InstrumentedExtension(AsyncExtension):
             pass
 
     def start_otel_connection_span(self, name: str) -> trace.Span:
-        """Start a websocket connection segment under the session span."""
+        """Start a websocket connection attempt under the session span."""
         if self._otel_connection_span is not None:
             return self._otel_connection_span
+        if self.otel_session_name:
+            self.start_otel_session_span(
+                self.otel_session_name, attributes={"ten.span.long_running": True},
+            )
         span, context = self._start_otel_span(
             name,
             parent_context=self._otel_session_context,
+            attributes={"ten.span.long_running": True},
         )
         self._otel_connection_span = span
         self._otel_connection_context = context
@@ -218,7 +224,7 @@ class InstrumentedExtension(AsyncExtension):
         *,
         error: str | None = None,
     ) -> None:
-        """End a websocket connection segment, optionally marking an error."""
+        """End a websocket connection, optionally marking an error."""
         span = self._otel_connection_span
         self._otel_connection_span = None
         self._otel_connection_context = None

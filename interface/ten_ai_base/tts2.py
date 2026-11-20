@@ -79,6 +79,7 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
 
     # Create the queue for message processing
     otel_instrumentation_name = "ten_ai_base.tts2"
+    otel_session_name = "tts.session"
 
     def __init__(self, name: str):
         super().__init__(name)
@@ -135,7 +136,7 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
         try:
             parent = otel_context.get_current()
             span = trace.get_tracer("ten_ai_base.tts2").start_span(
-                "tts.request",
+                "tts.synthesis",
                 context=parent,
                 attributes={"tts.request_id": request_id},
             )
@@ -145,6 +146,11 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
         except Exception:  # noqa: BLE001, S110 - tracing is best-effort.
             pass
         self._request_traces[request_id] = (span, parent)
+        self._add_request_span_event(
+            request_id,
+            "tts.request.received",
+            attributes={"tts.request_id": request_id},
+        )
 
     def _request_context(self, request_id: str | None) -> otel_context.Context:
         request = self._request_traces.get(request_id)
@@ -155,11 +161,20 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
         except Exception:  # noqa: BLE001 - tracing is best-effort.
             return otel_context.Context()
 
-    def _end_request_trace(self, request_id: str, outcome: str) -> None:
-        request = self._request_traces.pop(request_id, None)
-        if request is None or request[0] is None:
+    def _end_request_trace(
+        self, request_id: str, outcome: str, *, retain_context: bool = False,
+    ) -> None:
+        request = self._request_traces.get(request_id)
+        if request is None:
             return
+        if retain_context:
+            # Providers may emit usage data after audio_end and before cleanup.
+            self._request_traces[request_id] = (None, request[1])
+        else:
+            self._request_traces.pop(request_id)
         span = request[0]
+        if span is None:
+            return
         try:
             span.set_attribute("tts.request.outcome", outcome)
             if outcome == "error":
@@ -176,11 +191,6 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
         for request_id in list(self._request_traces):
             self._end_request_trace(request_id, outcome)
 
-    def _rotate_otel_connection_span(self) -> None:
-        self.end_otel_connection_span()
-        if self.is_connected():
-            self.start_otel_connection_span("tts.websocket.connection")
-
     def _add_request_span_event(
         self,
         request_id: str | None,
@@ -188,6 +198,8 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
         attributes: dict,
     ) -> None:
         request = self._request_traces.get(request_id) if request_id else None
+        if request_id:
+            attributes = {**attributes, "tts.request_id": request_id}
         self.add_otel_span_event(
             name,
             attributes=attributes,
@@ -268,7 +280,7 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         await super().on_start(ten_env)
         self.start_otel_session_span(
-            "tts.session",
+            self.otel_session_name,
             attributes={"ten.span.long_running": True},
         )
         vendor = self.vendor()
@@ -536,13 +548,11 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
 
             except asyncio.CancelledError:
                 self._end_request_trace(t.request_id, "interrupted")
-                self._rotate_otel_connection_span()
                 ten_env.log_info(
                     f"Task cancelled: {t.text}", category=LOG_CATEGORY_TRANSCRIPTS
                 )
             except Exception as err:
                 self._end_request_trace(t.request_id, "error")
-                self._rotate_otel_connection_span()
                 ten_env.log_error(
                     f"Task failed: {t.text}, err: {traceback.format_exc()}",
                     category=LOG_CATEGORY_TRANSCRIPTS,
@@ -667,6 +677,22 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
             category=LOG_CATEGORY_KEY_POINT,
         )
         await self._send_request_data(data, request_id)
+
+        request = self._request_traces.get(request_id)
+        if request is not None and request[0] is not None:
+            self._add_request_span_event(
+                request_id,
+                "tts.result.end",
+                attributes={"tts.request_id": request_id, "reason": reason.value},
+            )
+        outcome = (
+            "error" if reason == TTSAudioEndReason.ERROR else
+            "interrupted" if reason == TTSAudioEndReason.INTERRUPTED else "completed"
+        )
+        self._end_request_trace(
+            request_id, outcome,
+            retain_context=self.request_states.get(request_id) != RequestState.COMPLETED,
+        )
 
         # Reset current_audio_request_id (audio phase complete)
         if self.current_audio_request_id == request_id:
@@ -891,18 +917,19 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
 
         data = Data.create(DATA_OUT_CONNECTION_STATUS_CHANGED)
         data.set_property_from_json(None, event.model_dump_json())
-        await self.ten_env.send_data(data)
-        self.ten_env.log_info(
-            f"tts_connection_status_changed: {event.model_dump(mode='json')}",
-            category=LOG_CATEGORY_KEY_POINT,
-        )
-
-        if current == ModuleConnectionStatus.DISCONNECTED:
-            self.end_otel_connection_span(
-                error=(message or "abnormal websocket disconnect")
-                if code not in (0, 1000)
-                else None,
+        try:
+            await self.ten_env.send_data(data)
+            self.ten_env.log_info(
+                f"tts_connection_status_changed: {event.model_dump(mode='json')}",
+                category=LOG_CATEGORY_KEY_POINT,
             )
+        finally:
+            if current == ModuleConnectionStatus.DISCONNECTED:
+                self.end_otel_connection_span(
+                    error=(message or "abnormal websocket disconnect")
+                    if code not in (0, 1000)
+                    else None,
+                )
 
     def _active_request_id(self) -> str | None:
         return self._processing_request_id or self.current_audio_request_id
@@ -1076,8 +1103,9 @@ class AsyncTTS2BaseExtension(InstrumentedExtension, ABC):
             outcome = "error" if error or reason == TTSAudioEndReason.ERROR else (
                 "interrupted" if reason == TTSAudioEndReason.INTERRUPTED else "completed"
             )
-            self._end_request_trace(request_id, outcome)
-            self._rotate_otel_connection_span()
+            request = self._request_traces.get(request_id)
+            if outcome != "completed" or (request is not None and request[0] is None):
+                self._end_request_trace(request_id, outcome)
 
     @abstractmethod
     def vendor(self) -> str:

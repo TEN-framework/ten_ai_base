@@ -22,38 +22,46 @@ standalone development tools belong to the separate `dev` project. A parent uv
 workspace can use `ten_ai_base` as a member and configure its own TEN runtime
 source without requiring this repository's `.ten` directory.
 
-## TTS request tracing
+## Speech tracing
 
-`AsyncTTS2BaseExtension` uses the host's OpenTelemetry provider through the
-`ten_ai_base.tts2` tracer. It creates one `tts.session` span for the extension
-lifecycle and one `tts.websocket.connection` span for each connection segment.
-The session span has `ten.span.long_running=True`; connection spans end when the
-connection closes or when a `tts.request` completes, so each segment stays
-bounded. It also creates one `tts.request` span per accepted request, starting
-with the first text chunk and including queue wait. The first chunk's parent
-context and baggage are retained across queued and interleaved chunks. The
-request context is also used by TTS output helpers called from background
-provider tasks.
+`AsyncASRBaseExtension` and `AsyncTTS2BaseExtension` use the host's OpenTelemetry
+provider through the `ten_ai_base.asr` and `ten_ai_base.tts2` tracers. Each creates
+one session span: `asr.session` or `tts.session`.
 
-Legacy `error` and `metrics` data events are also recorded as span events on
-the corresponding ASR connection or TTS request span. Their metric maps remain
-event attributes; they are not exported as OTel metric instruments, so clients
-do not aggregate them.
+Each WebSocket connection has its own `asr.websocket.connection` or
+`tts.websocket.connection` span under the session. It starts with the connection
+attempt and ends when the connection closes or the attempt fails. Reconnection
+starts another connection span. Abnormal closures and failed attempts set error
+status; normal closures do not. Session and connection spans carry
+`ten.span.long_running=True`.
 
-Spans end at `finish_request`, processing failure, flush, or shutdown. Attributes
-include `tts.request_id` and `tts.request.outcome` (`completed`, `error`, or
-`interrupted`); synthesis errors set the span's error status. Text and audio are
-not added to span attributes.
+ASR creates `asr.segment` under `asr.session` on receipt of the first audio frame.
+It records `asr.finalize` when a valid finalize signal arrives. After emitting
+`asr_finalize_end`, it records `asr.finalize_end` on the segment it closes and
+starts the next segment. Both events carry `finalize_id`. Segments continue
+across reconnects and close on shutdown if no finalize end arrives.
+
+TTS creates one `tts.synthesis` span per `request_id`, starting with the first
+accepted text chunk and including queue wait. It records `tts.request.received`
+once. Successful emission of `tts_audio_end` records `tts.result.end` and ends
+the synthesis span. Processing failure, interruption, flush, or shutdown also
+ends unfinished synthesis spans. Request cleanup alone does not end an active
+synthesis span before its result end.
+
+The first text chunk's upstream parent context and baggage are retained across
+queued and interleaved chunks. TTS output helpers use that context even when
+called from background provider tasks, including outputs sent after audio end
+and before request cleanup. Attributes include `tts.request_id` and
+`tts.request.outcome` (`completed`, `error`, or `interrupted`); synthesis errors
+set error status. Text and audio are not added to span attributes.
+
+Legacy data events are also recorded as `asr.error`, `asr.metrics`, `tts.error`,
+and `tts.metrics` span events. They attach to the active ASR segment or matching
+TTS synthesis span, with connection and session fallback when the operation span
+is unavailable. Metric and metadata maps are serialized as JSON attributes.
+These events do not create OTel metric instruments or perform client aggregation.
 
 The host configures the SDK provider and exporters. Without a provider, valid
-incoming context still propagates, but no request spans are recorded. Tracing
-exceptions are suppressed at instrumentation boundaries so they do not block
-callbacks or message delivery. Application and transport exceptions retain
-their existing behavior. Cancellation and failures still follow the existing
-TTS request state machine; tracing does not change request scheduling.
-
-`AsyncASRBaseExtension` follows the same lifecycle model with `asr.session` and
-bounded `asr.websocket.connection` spans. The connection span rotates after
-`asr_finalize` and ends on disconnect; abnormal disconnects set its status to
-error. Both session spans are marked with `ten.span.long_running=True`.
-
+incoming context still propagates, but no spans are recorded. Tracing failures
+do not block callbacks or message delivery. Application and transport exceptions
+retain their existing behavior. Tracing does not change request scheduling.
